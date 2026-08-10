@@ -432,3 +432,32 @@ Stage Summary:
 - Verified via Agent Browser: dashboard sidebar shows all 4 nav items → Organizations view (create org, manage members, invite collaborator) → Templates gallery (category tabs, template cards) → Share dialog (email + role selector) → Usage card (stats + recent activity).
 - No billing: per user request, Phase 7 focuses on MVP production and user growth. Billing can be added later (PRD §7: "billing-ready structure").
 - Next phase: Phase 8 = AI (prompt-to-outline, rewrite, summarize, structured generation).
+
+---
+Task ID: 8
+Agent: main
+Task: Create minimalist landing page (paper/writing theme) + login + signup pages. Architecturally separate marketing site from editor app at /app.
+
+Work Log:
+- Moved the existing NUSWORD editor app from `/` to `/app` route (`src/app/app/page.tsx`). This is the client-side application with Zustand store, dashboard, editor, and book views.
+- Created new landing page at `/` (`src/app/page.tsx`) — a server component (no client-side app dependencies, no Zustand store, no editor imports). Marketing/public website.
+- Landing page theme: "kertas tulisan biasa" (ordinary writing paper) — minimalist aesthetic with:
+  - Subtle ruled-line background pattern (like notebook paper)
+  - Red margin line on the left (like notebook paper)
+  - Source Serif 4 for headings and body text (paper-like)
+  - Hanken Grotesk for UI elements (nav, buttons, labels)
+  - Deep teal primary color for CTAs
+  - Generous whitespace
+- Landing page sections: Hero (brand + headline "Write. Design. Publish. Print." + subtitle + CTAs), Features (6 feature cards with icons), Phases (8-phase roadmap timeline), CTA ("Mulai menulis hari ini" with signup + demo buttons), Footer.
+- Created `src/components/landing/landing-nav.tsx` — sticky transparent nav with brand, links (Fitur, Roadmap, Masuk, Daftar).
+- Created `src/components/landing/landing-footer.tsx` — minimalist footer with brand, links, copyright.
+- Created login page at `/login` (`src/app/login/page.tsx`) — simple paper-themed form: email + password inputs with bottom-border style (like writing on a line), "Masuk" button, "Coba Demo Tanpa Akun" link, signup link. On submit → redirect to /app.
+- Created signup page at `/signup` (`src/app/signup/page.tsx`) — simple paper-themed form: name + email + password inputs, "Buat Akun" button, terms text, demo link, login link. On submit → redirect to /app.
+- Updated layout metadata to Indonesian description.
+- Architecture: Landing page (`/`) is a server component with NO imports from the app (no Zustand store, no editor, no dashboard, no hooks). The app (`/app`) is a client component with full app dependencies. Login/signup are client components (for form state + router redirect) but don't import app components. This cleanly separates marketing from application code.
+
+Stage Summary:
+- Marketing site at `/` — minimalist landing page with paper/writing theme, architecturally separate from the editor app.
+- Auth pages at `/login` and `/signup` — simple paper-themed forms that redirect to `/app` on submit (Phase 7: no real auth yet, placeholder).
+- Editor app at `/app` — the full NUSWORD application (dashboard, editor, book view, organizations, templates, etc.).
+- All navigation flows verified: landing → signup → /app, landing → login → /app, landing → Coba Demo → /app, login ↔ signup cross-links.

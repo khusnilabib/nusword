@@ -33,7 +33,7 @@ const amiri = Amiri({
 export const metadata: Metadata = {
   title: "NUSWORD — Write • Design • Publish • Print",
   description:
-    "NUSWORD is a document creation, publishing, and print-ready platform. Edit, design, paginate, and export books, kitab, and documents from one canonical source.",
+    "Platform dokumen, publishing, buku, kitab, dan print-ready document. Buat, edit, paginasi, dan ekspor dari satu sumber canonical.",
   keywords: [
     "NUSWORD",
     "document editor",
