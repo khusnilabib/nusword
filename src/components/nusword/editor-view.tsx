@@ -21,6 +21,7 @@ import { FindReplace } from "./editor/find-replace";
 import { PreviewCanvas } from "./editor/preview-canvas";
 import { PageThumbnails } from "./editor/page-thumbnails";
 import { ExportDialog } from "./export-dialog";
+import { ShareDialog } from "./share-dialog";
 import { useNuswordStore } from "@/stores/nusword-store";
 import { useDocument, useDocumentVersions, useCreateVersion, useRestoreVersion } from "@/hooks/use-documents";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -100,6 +101,7 @@ function EditorShell(props: EditorShellProps) {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [shareOpen, setShareOpen] = React.useState(false);
 
   // Editor instance — stored in state (not ref) so FindReplace can read it
   // during render without violating the "no ref access during render" rule.
@@ -207,6 +209,7 @@ function EditorShell(props: EditorShellProps) {
         }
         totalPages={pagination.totalPages}
         onExport={() => setExportOpen(true)}
+        onShare={() => setShareOpen(true)}
       />
       <div className="relative flex flex-1 overflow-hidden">
         <EditorLeftSidebar
@@ -283,6 +286,12 @@ function EditorShell(props: EditorShellProps) {
         settings={settings}
         pagination={pagination}
       />
+      <ShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        documentId={documentId}
+        documentTitle={title}
+      />
     </div>
   );
 }
@@ -303,6 +312,7 @@ function EditorTopNav({
   onToggleMode,
   totalPages,
   onExport,
+  onShare,
 }: {
   title: string;
   onTitleChange: (t: string) => void;
@@ -315,6 +325,7 @@ function EditorTopNav({
   onToggleMode: () => void;
   totalPages: number;
   onExport: () => void;
+  onShare: () => void;
 }) {
   const toggleFindReplace = useNuswordStore((s) => s.toggleFindReplace);
 
@@ -427,6 +438,7 @@ function EditorTopNav({
         </button>
         <button
           type="button"
+          onClick={onShare}
           className="hidden cursor-pointer rounded border border-outline-variant px-3 py-1.5 text-body-ui-md text-primary transition-colors duration-200 hover:bg-surface-container-low sm:inline-flex"
         >
           Share

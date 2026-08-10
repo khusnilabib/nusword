@@ -33,12 +33,17 @@ model Document {
   updatedAt DateTime @updatedAt
   /// Soft-delete: documents go to trash before permanent deletion (PRD §25).
   deletedAt DateTime?
+  /// Organization that owns this document (null = personal).
+  organizationId String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   versions  DocumentVersion[]
   exportJobs ExportJob[]
+  shares    SharedDocument[]
 
   @@index([deletedAt])
   @@index([updatedAt])
+  @@index([organizationId])
 }
 
 /// Immutable document version snapshot (PRD §13: "Keep document versions
@@ -110,11 +115,15 @@ model Book {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
+  /// Organization that owns this book (null = personal).
+  organizationId String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   chapters BookChapter[]
 
   @@index([deletedAt])
   @@index([updatedAt])
+  @@index([organizationId])
 }
 
 /// BookChapter — a chapter in a book's chapter tree (PRD §15: nested chapters
@@ -141,4 +150,110 @@ model BookChapter {
   @@index([bookId])
   @@index([parentId])
   @@index([sortOrder])
+}
+
+/// Organization — a team/workspace that owns documents and books (PRD §19: RBAC).
+/// Phase 7: organizations without billing. Used for sharing and collaboration.
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  members     OrganizationMember[]
+  documents   Document[]
+  books       Book[]
+  templates   Template[]
+
+  @@index([deletedAt])
+}
+
+/// Organization membership with role (PRD §19: RBAC roles).
+model OrganizationMember {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Member email (Phase 7: no auth yet, identified by email).
+  email           String
+  /// Display name.
+  name            String?
+  /// Role: "owner" | "admin" | "editor" | "commenter" | "viewer"
+  role            String   @default("viewer")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([email])
+}
+
+/// Shared document — grants access to a document for a user/org (PRD §19).
+/// Sharing is separate from ownership: a document can be owned by an org and
+/// shared with individual users.
+model SharedDocument {
+  id           String   @id @default(cuid())
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// Who the document is shared with (email).
+  sharedWithEmail String
+  /// Role granted to the sharee: "editor" | "commenter" | "viewer"
+  role         String   @default("viewer")
+  /// Optional share token for public link sharing.
+  shareToken   String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([documentId])
+  @@index([sharedWithEmail])
+}
+
+/// Template — a reusable document/book template (PRD §7: Template Engine).
+/// Templates can be published to the marketplace for others to use.
+model Template {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  /// "document" | "book"
+  type         String   @default("document")
+  /// Category: "academic" | "business" | "creative" | "religious" | "personal"
+  category     String   @default("personal")
+  /// Tiptap JSON content (for document templates).
+  content      String   @default("")
+  /// PageSettings or BookSettings JSON.
+  settings     String   @default("{}")
+  /// Whether this template is published to the marketplace.
+  published    Boolean  @default(false)
+  /// Organization that owns this template (null = system template).
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Usage count (how many times this template was used).
+  useCount     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([published])
+  @@index([category])
+  @@index([organizationId])
+}
+
+/// Usage event — tracks user activity for metering (PRD §32: success metrics).
+/// Phase 7: tracking only, no billing. Used for analytics and limits.
+model UsageEvent {
+  id          String   @id @default(cuid())
+  /// User email (Phase 7: no auth).
+  email       String
+  /// Event type: "document.create" | "document.export" | "book.create" | "template.use" | etc.
+  type        String
+  /// Resource ID (document id, book id, etc.).
+  resourceId  String?
+  /// Additional metadata (JSON).
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+  @@index([type])
+  @@index([createdAt])
 }

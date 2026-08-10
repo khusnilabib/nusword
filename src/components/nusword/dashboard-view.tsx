@@ -19,8 +19,12 @@ import {
   useDeleteDocument,
 } from "@/hooks/use-documents";
 import { useBooks, useCreateBook } from "@/hooks/use-books";
+import { useSharedWithMe } from "@/hooks/use-saas";
 import { relativeTime } from "@/lib/nusword/time";
 import { toast } from "sonner";
+import { TemplatesGallery } from "./templates-gallery";
+import { OrganizationsView } from "./organizations-view";
+import { UsageCard } from "./usage-card";
 
 type NavItem = {
   key: string;
@@ -30,8 +34,9 @@ type NavItem = {
 
 const PRIMARY_NAV: NavItem[] = [
   { key: "recent", label: "Recent", icon: "history" },
+  { key: "shared", label: "Shared with me", icon: "share" },
   { key: "templates", label: "Templates", icon: "dashboard_customize" },
-  { key: "projects", label: "Projects", icon: "folder_open" },
+  { key: "organizations", label: "Organizations", icon: "groups" },
 ];
 
 const FOOTER_NAV: NavItem[] = [
@@ -104,6 +109,15 @@ export function DashboardView() {
       <DashboardTopNav search={search} onSearch={setSearch} />
       <div className="flex flex-1 overflow-hidden">
         <DashboardSidebar activeNav={activeNav} onNavChange={setActiveNav} />
+
+        {/* Organizations view — full page, no padding wrapper */}
+        {activeNav === "organizations" ? (
+          <OrganizationsView />
+        ) : activeNav === "templates" ? (
+          <main className="flex-1 overflow-y-auto bg-background p-margin-mobile md:p-margin-desktop">
+            <TemplatesGallery onUseDocument={(docId, docTitle) => openDocument(docId, docTitle)} />
+          </main>
+        ) : (
         <main className="flex-1 overflow-y-auto bg-background p-margin-mobile md:p-margin-desktop">
           <div className="mx-auto max-w-6xl">
             {/* Welcome */}
@@ -115,6 +129,13 @@ export function DashboardView() {
                 Pick up where you left off or start a new publication.
               </p>
             </div>
+
+            {/* Usage stats card */}
+            {activeNav === "recent" && (
+              <div className="mb-8">
+                <UsageCard />
+              </div>
+            )}
 
             {/* Section label */}
             <div className="mb-4 flex items-center justify-between">
@@ -259,6 +280,7 @@ export function DashboardView() {
             </div>
           </div>
         </main>
+        )}
       </div>
     </div>
   );
