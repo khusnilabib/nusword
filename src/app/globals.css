@@ -1,0 +1,415 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   NUSWORD Design System
+   "Invisible Interface" — Minimalism + Modern Corporate
+   Primary: Deep Teal (#012425). Dual typeface: Hanken Grotesk (UI)
+   + Source Serif 4 (content) + JetBrains Mono (technical) + Amiri (Arabic).
+   Tonal-layer elevation, 4px baseline grid, soft-modular shapes.
+   ============================================================ */
+
+@theme inline {
+  /* shadcn token mappings (kept for component compatibility) */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-hanken-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-serif: var(--font-source-serif-4);
+  --font-arabic: var(--font-amiri);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* NUSWORD surface tiers (Material-3-style tonal layers) */
+  --color-surface: var(--surface);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-inverse-surface: var(--inverse-surface);
+  --color-inverse-on-surface: var(--inverse-on-surface);
+  --color-inverse-primary: var(--inverse-primary);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-primary-container: var(--primary-container);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-primary-fixed-dim: var(--primary-fixed-dim);
+  --color-on-primary-fixed: var(--on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--on-primary-fixed-variant);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-tertiary: var(--tertiary);
+  --color-on-tertiary: var(--on-tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  /* Custom radii — soft-modular (4px buttons, 8px cards) */
+  --radius-xs: 0.125rem; /* 2px — chips/badges */
+  --radius-sm: 0.25rem;  /* 4px — default inputs/buttons */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 0.5rem;   /* 8px — cards/modals */
+  --radius-xl: 0.75rem;  /* 12px */
+  --radius-2xl: 1rem;
+
+  /* Custom spacing tokens */
+  --spacing-gutter: 24px;
+  --spacing-margin-mobile: 16px;
+  --spacing-margin-desktop: 40px;
+  --spacing-sidebar-width: 280px;
+  --spacing-toolbar-height: 56px;
+  --spacing-statusbar-height: 32px;
+}
+
+:root {
+  /* shadcn-compatible variables mapped to NUSWORD palette */
+  --radius: 0.25rem; /* 4px default — soft-modular */
+  --background: #faf8ff;
+  --foreground: #131b2e;
+  --card: #ffffff;
+  --card-foreground: #131b2e;
+  --popover: #ffffff;
+  --popover-foreground: #131b2e;
+  --primary: #012425;       /* Deep Teal */
+  --primary-foreground: #ffffff;
+  --secondary: #505f76;
+  --secondary-foreground: #ffffff;
+  --muted: #eaedff;
+  --muted-foreground: #414848;
+  --accent: #e2e7ff;
+  --accent-foreground: #131b2e;
+  --destructive: #ba1a1a;
+  --destructive-foreground: #ffffff;
+  --border: #c1c8c7;
+  --input: #c1c8c7;
+  --ring: #012425;
+  --chart-1: #012425;
+  --chart-2: #505f76;
+  --chart-3: #446464;
+  --chart-4: #abcdcc;
+  --chart-5: #c09582;
+  --sidebar: #f2f3ff;
+  --sidebar-foreground: #131b2e;
+  --sidebar-primary: #012425;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2e7ff;
+  --sidebar-accent-foreground: #131b2e;
+  --sidebar-border: #c1c8c7;
+  --sidebar-ring: #012425;
+
+  /* NUSWORD surface tiers */
+  --surface: #faf8ff;
+  --surface-bright: #faf8ff;
+  --surface-dim: #d2d9f4;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f3ff;
+  --surface-container: #eaedff;
+  --surface-container-high: #e2e7ff;
+  --surface-container-highest: #dae2fd;
+  --surface-variant: #dae2fd;
+  --on-surface: #131b2e;
+  --on-surface-variant: #414848;
+  --outline: #717878;
+  --outline-variant: #c1c8c7;
+  --inverse-surface: #283044;
+  --inverse-on-surface: #eef0ff;
+  --inverse-primary: #abcdcc;
+  --primary-container: #1a3a3a;
+  --on-primary-container: #83a4a3;
+  --primary-fixed: #c7e9e8;
+  --primary-fixed-dim: #abcdcc;
+  --on-primary-fixed: #002020;
+  --on-primary-fixed-variant: #2d4c4c;
+  --secondary-container: #d0e1fb;
+  --on-secondary-container: #54647a;
+  --tertiary: #33190d;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #4c2e20;
+  --on-tertiary-container: #c09582;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+}
+
+.dark {
+  --radius: 0.25rem;
+  --background: #131b2e;
+  --foreground: #eef0ff;
+  --card: #1a2238;
+  --card-foreground: #eef0ff;
+  --popover: #1a2238;
+  --popover-foreground: #eef0ff;
+  --primary: #abcdcc;
+  --primary-foreground: #002020;
+  --secondary: #b7c8e1;
+  --secondary-foreground: #0b1c30;
+  --muted: #283044;
+  --muted-foreground: #c1c8c7;
+  --accent: #283044;
+  --accent-foreground: #eef0ff;
+  --destructive: #ffb4ab;
+  --destructive-foreground: #690005;
+  --border: #414848;
+  --input: #414848;
+  --ring: #abcdcc;
+  --chart-1: #abcdcc;
+  --chart-2: #b7c8e1;
+  --chart-3: #c7e9e8;
+  --chart-4: #505f76;
+  --chart-5: #ebbca8;
+  --sidebar: #1a2238;
+  --sidebar-foreground: #eef0ff;
+  --sidebar-primary: #abcdcc;
+  --sidebar-primary-foreground: #002020;
+  --sidebar-accent: #283044;
+  --sidebar-accent-foreground: #eef0ff;
+  --sidebar-border: #414848;
+  --sidebar-ring: #abcdcc;
+
+  --surface: #131b2e;
+  --surface-bright: #384156;
+  --surface-dim: #0d1426;
+  --surface-container-lowest: #0d1426;
+  --surface-container-low: #1a2238;
+  --surface-container: #1e2740;
+  --surface-container-high: #283044;
+  --surface-container-highest: #333c52;
+  --surface-variant: #414848;
+  --on-surface: #eef0ff;
+  --on-surface-variant: #c1c8c7;
+  --outline: #8b9393;
+  --outline-variant: #414848;
+  --inverse-surface: #eef0ff;
+  --inverse-on-surface: #2e3648;
+  --inverse-primary: #1a3a3a;
+  --primary-container: #2d4c4c;
+  --on-primary-container: #c7e9e8;
+  --primary-fixed: #c7e9e8;
+  --primary-fixed-dim: #abcdcc;
+  --on-primary-fixed: #002020;
+  --on-primary-fixed-variant: #2d4c4c;
+  --secondary-container: #38485d;
+  --on-secondary-container: #d3e4fe;
+  --tertiary: #ebbca8;
+  --on-tertiary: #2e1509;
+  --tertiary-container: #603f30;
+  --on-tertiary-container: #ffdbcc;
+  --error-container: #93000a;
+  --on-error-container: #ffdad6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html, body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-hanken-grotesk), ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+/* ============================================================
+   NUSWORD utility classes
+   ============================================================ */
+
+/* Material Symbols baseline — outline style, 300 weight */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: 300;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings: "FILL" 0, "wght" 300, "GRAD" 0, "opsz" 20;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Document paper — soft diffused ambient shadow (Level 2 elevation) */
+.paper-shadow {
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.04), 0px 0px 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Top ruler — minor ticks every 10px, major ticks every 50px.
+   Two layered gradients create the classic ruler look. */
+.ruler-h {
+  background-image:
+    /* major ticks (every 50px, 8px tall, darker) */
+    linear-gradient(
+      90deg,
+      transparent calc(50px - 1px),
+      var(--outline) calc(50px - 1px),
+      var(--outline) 50px,
+      transparent 50px
+    ),
+    /* minor ticks (every 10px, 4px tall, lighter) */
+    linear-gradient(
+      90deg,
+      transparent calc(10px - 0.5px),
+      var(--outline-variant) calc(10px - 0.5px),
+      var(--outline-variant) 10px,
+      transparent 10px
+    );
+  background-size: 50px 100%, 10px 100%;
+  background-repeat: repeat-x;
+  background-position: 0 100%, 0 100%;
+}
+.ruler-v {
+  background-image:
+    linear-gradient(
+      180deg,
+      transparent calc(50px - 1px),
+      var(--outline) calc(50px - 1px),
+      var(--outline) 50px,
+      transparent 50px
+    ),
+    linear-gradient(
+      180deg,
+      transparent calc(10px - 0.5px),
+      var(--outline-variant) calc(10px - 0.5px),
+      var(--outline-variant) 10px,
+      transparent 10px
+    );
+  background-size: 100% 50px, 100% 10px;
+  background-repeat: repeat-y;
+  background-position: 100% 0, 100% 0;
+}
+
+/* Hide number input spinners — they collide with unit suffixes */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Minimalist scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--outline-variant);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--outline);
+}
+
+/* Font-family helper utilities (mapped to Next.js font variables) */
+.font-ui {
+  font-family: var(--font-hanken-grotesk), ui-sans-serif, system-ui, sans-serif;
+}
+.font-doc {
+  font-family: var(--font-source-serif-4), ui-serif, Georgia, serif;
+}
+.font-mono-ui {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+.font-arabic {
+  font-family: var(--font-amiri), "Source Serif 4", serif;
+}
+
+/* Typography scale helpers (from DESIGN.md) */
+.text-display-doc {
+  font-family: var(--font-source-serif-4), ui-serif, Georgia, serif;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.text-headline-ui-lg {
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+.text-headline-ui-md {
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+.text-body-doc-main {
+  font-family: var(--font-source-serif-4), ui-serif, Georgia, serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.text-body-ui-md {
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.text-label-ui-sm {
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+}
+.text-mono-ui {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+/* Editor contenteditable placeholder */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--outline);
+  pointer-events: none;
+}
+[contenteditable]:focus {
+  outline: none;
+}

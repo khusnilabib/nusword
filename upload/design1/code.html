@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NUSWORD - Document Editor</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,100..900;1,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&amp;family=Amiri:ital,wght@0,400;0,700;1,400;1,700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#e2e7ff",
+                        "surface-dim": "#d2d9f4",
+                        "on-primary-fixed": "#002020",
+                        "on-tertiary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "surface": "#faf8ff",
+                        "on-tertiary-container": "#c09582",
+                        "surface-container": "#eaedff",
+                        "primary-fixed": "#c7e9e8",
+                        "on-surface": "#131b2e",
+                        "outline": "#717878",
+                        "tertiary-fixed-dim": "#ebbca8",
+                        "background": "#faf8ff",
+                        "on-primary": "#ffffff",
+                        "secondary-fixed": "#d3e4fe",
+                        "on-error-container": "#93000a",
+                        "error": "#ba1a1a",
+                        "on-secondary-fixed-variant": "#38485d",
+                        "error-container": "#ffdad6",
+                        "on-secondary": "#ffffff",
+                        "on-background": "#131b2e",
+                        "inverse-surface": "#283044",
+                        "tertiary": "#33190d",
+                        "primary-fixed-dim": "#abcdcc",
+                        "surface-container-low": "#f2f3ff",
+                        "on-secondary-container": "#54647a",
+                        "on-secondary-fixed": "#0b1c30",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "tertiary-container": "#4c2e20",
+                        "secondary": "#505f76",
+                        "on-tertiary-fixed-variant": "#603f30",
+                        "surface-bright": "#faf8ff",
+                        "surface-container-highest": "#dae2fd",
+                        "inverse-on-surface": "#eef0ff",
+                        "outline-variant": "#c1c8c7",
+                        "tertiary-fixed": "#ffdbcc",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-primary": "#abcdcc",
+                        "on-primary-container": "#83a4a3",
+                        "secondary-container": "#d0e1fb",
+                        "primary": "#012425",
+                        "surface-variant": "#dae2fd",
+                        "on-surface-variant": "#414848",
+                        "primary-container": "#1a3a3a",
+                        "on-primary-fixed-variant": "#2d4c4c",
+                        "surface-tint": "#446464",
+                        "on-tertiary-fixed": "#2e1509"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-desktop": "40px",
+                        "toolbar-height": "56px",
+                        "unit": "4px",
+                        "gutter": "24px",
+                        "margin-mobile": "16px",
+                        "sidebar-width": "280px",
+                        "statusbar-height": "32px"
+                    },
+                    "fontFamily": {
+                        "headline-ui-lg": ["Hanken Grotesk"],
+                        "label-ui-sm": ["Hanken Grotesk"],
+                        "display-doc": ["\"Source Serif 4\""],
+                        "body-ui-md": ["Hanken Grotesk"],
+                        "mono-ui": ["jetbrainsMono"],
+                        "headline-ui-md": ["Hanken Grotesk"],
+                        "body-doc-main": ["\"Source Serif 4\""],
+                        "arabic": ["Amiri"]
+                    },
+                    "fontSize": {
+                        "headline-ui-lg": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "label-ui-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-doc": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-ui-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "mono-ui": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-ui-md": ["18px", { "lineHeight": "24px", "fontWeight": "600" }],
+                        "body-doc-main": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Base styles */
+        body {
+            background-color: theme('colors.surface-container-low');
+            color: theme('colors.on-surface');
+            overflow: hidden; /* Prevent body scroll, manage scroll internally */
+        }
+        
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: theme('colors.outline-variant');
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: theme('colors.outline');
+        }
+
+        /* Material Symbols Outline Utility */
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+        }
+
+        /* Editor specific styles */
+        .paper-shadow {
+            box-shadow: 0px 4px 20px rgba(0,0,0,0.04), 0px 0px 1px rgba(0,0,0,0.1);
+        }
+        
+        .ruler {
+            background-image: linear-gradient(90deg, transparent 95%, theme('colors.outline-variant') 95%);
+            background-size: 10px 100%;
+        }
+        .ruler-v {
+            background-image: linear-gradient(180deg, transparent 95%, theme('colors.outline-variant') 95%);
+            background-size: 100% 10px;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen">
+<!-- TopNavBar (Type: Medium, Intent: Document Editor) -->
+<nav class="flex justify-between items-center px-gutter w-full h-toolbar-height bg-surface dark:bg-background border-b border-outline-variant dark:border-outline z-50 shrink-0">
+<!-- Left: Brand / Document Info -->
+<div class="flex items-center gap-4">
+<span class="font-body-ui-md text-body-ui-md text-on-surface-variant italic">Manuscript_v1.docx</span>
+<span class="font-label-ui-sm text-label-ui-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">cloud_done</span> Saved
+            </span>
+</div>
+<!-- Right: Actions -->
+<div class="flex items-center gap-4">
+<button class="font-body-ui-md text-body-ui-md text-primary dark:text-primary-fixed-dim px-3 py-1.5 border border-outline-variant rounded hover:bg-surface-container-low transition-colors duration-200">
+                Share
+            </button>
+<button class="font-body-ui-md text-body-ui-md bg-primary text-on-primary px-4 py-1.5 rounded hover:bg-primary-container transition-colors duration-200">
+                Export
+            </button>
+</div>
+</nav>
+<!-- Main Workspace Layout -->
+<div class="flex flex-1 overflow-hidden relative">
+<!-- Left SideNavBar (Navigation: Outline/Pages) -->
+<aside class="w-sidebar-width h-full bg-surface dark:bg-background border-r border-outline-variant dark:border-outline flex flex-col shrink-0 z-40">
+<!-- Header -->
+<div class="p-4 border-b border-outline-variant">
+<h2 class="font-label-ui-sm text-label-ui-sm text-on-surface-variant uppercase tracking-wider">Navigation</h2>
+</div>
+<!-- Tabs -->
+<div class="flex border-b border-outline-variant">
+<button class="flex-1 py-2 flex items-center justify-center gap-2 text-primary dark:text-primary-fixed-dim font-bold border-b-2 border-primary bg-surface-container-low">
+<span class="material-symbols-outlined text-[18px]">format_list_bulleted</span>
+<span class="font-label-ui-sm text-label-ui-sm">Outline</span>
+</button>
+<button class="flex-1 py-2 flex items-center justify-center gap-2 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-[18px]">layers</span>
+<span class="font-label-ui-sm text-label-ui-sm">Pages</span>
+</button>
+</div>
+<!-- Panel Content -->
+<div class="flex-1 overflow-y-auto p-4">
+<ul class="space-y-1">
+<li>
+<a class="block py-1.5 px-2 font-body-ui-md text-body-ui-md text-primary bg-surface-container rounded border-l-2 border-primary" href="#">
+                            1. Introduction
+                        </a>
+</li>
+<li>
+<a class="block py-1.5 px-2 font-body-ui-md text-body-ui-md text-on-surface-variant hover:bg-surface-container-low rounded pl-6" href="#">
+                            1.1 Historical Context
+                        </a>
+</li>
+<li>
+<a class="block py-1.5 px-2 font-body-ui-md text-body-ui-md text-on-surface-variant hover:bg-surface-container-low rounded pl-6" href="#">
+                            1.2 The Evolution of Typesetting
+                        </a>
+</li>
+<li>
+<a class="block py-1.5 px-2 font-body-ui-md text-body-ui-md text-on-surface-variant hover:bg-surface-container-low rounded" href="#">
+                            2. Methodology
+                        </a>
+</li>
+<li>
+<a class="block py-1.5 px-2 font-body-ui-md text-body-ui-md text-on-surface-variant hover:bg-surface-container-low rounded" href="#">
+                            3. Arabic Script Intricacies
+                        </a>
+</li>
+</ul>
+</div>
+</aside>
+<!-- Center Document Canvas -->
+<main class="flex-1 bg-surface-container-low overflow-y-auto relative flex flex-col items-center py-10 px-4">
+<!-- Top Ruler -->
+<div class="absolute top-0 left-0 w-full h-6 bg-surface border-b border-outline-variant flex items-end overflow-hidden z-10 sticky top-0">
+<div class="w-sidebar-width shrink-0 border-r border-outline-variant h-full bg-surface-container-high"></div>
+<div class="flex-1 ruler h-4 ml-[24px] mr-[24px]"></div>
+<div class="w-sidebar-width shrink-0 border-l border-outline-variant h-full bg-surface-container-high"></div>
+</div>
+<!-- The Paper -->
+<article class="bg-white w-[210mm] min-h-[297mm] paper-shadow mt-6 mb-20 p-[25.4mm] flex flex-col mx-auto shrink-0 transition-transform origin-top z-0 relative">
+<h1 class="font-display-doc text-display-doc text-on-surface mb-8">
+                    The Art of Invisible Interfaces
+                </h1>
+<p class="font-body-doc-main text-body-doc-main text-on-surface mb-6 text-justify">
+                    Design is not just what it looks like and feels like. Design is how it works. In the context of a dedicated writing environment, the interface must recede into the background, allowing the words themselves to take center stage. This pursuit of the "invisible interface" demands a rigorous application of grid systems, refined typography, and a deliberate absence of extraneous visual noise. The focus must remain unyieldingly on the artifact being created.
+                </p>
+<p class="font-body-doc-main text-body-doc-main text-on-surface mb-6 text-justify">
+                    Consider the historical context of typesetting. The meticulous arrangement of lead type necessitated a profound understanding of spacing, leading, and alignment. Modern digital tools, while offering unprecedented flexibility, often introduce complexity that distracts from the core act of composition. We must bridge this gap.
+                </p>
+<!-- Arabic Text Segment -->
+<div class="my-8 pl-8 border-l-2 border-outline-variant bg-surface-container-lowest py-4 pr-4">
+<p class="font-arabic text-[22px] leading-loose text-on-surface text-justify" dir="rtl" lang="ar">
+                        التصميم ليس فقط كيف يبدو ويشعر. التصميم هو كيف يعمل. في سياق بيئة الكتابة المخصصة، يجب أن تتراجع الواجهة إلى الخلفية، مما يسمح للكلمات نفسها بأن تحتل مركز الصدارة. هذا السعي وراء "الواجهة غير المرئية" يتطلب تطبيقًا صارمًا لأنظمة الشبكة، وطباعة محسنة، وغيابًا متعمدًا للضوضاء البصرية الدخيلة.
+                    </p>
+</div>
+<p class="font-body-doc-main text-body-doc-main text-on-surface text-justify">
+                    To achieve true focus, we strip away the superfluous. We rely on subtle tonal shifts rather than heavy shadows, and precise borders rather than obtrusive structural elements. The resulting environment is calm, authoritative, and profoundly respectful of the author's intent.
+                </p>
+</article>
+</main>
+<!-- Right SideNavBar (Properties: Typography/Layout) -->
+<aside class="w-sidebar-width h-full bg-surface dark:bg-background border-l border-outline-variant dark:border-outline flex flex-col shrink-0 z-40">
+<!-- Header -->
+<div class="p-4 border-b border-outline-variant">
+<h2 class="font-label-ui-sm text-label-ui-sm text-on-surface-variant uppercase tracking-wider">Properties</h2>
+</div>
+<!-- Tabs -->
+<div class="flex border-b border-outline-variant px-2 pt-2">
+<button class="pb-2 px-3 text-primary border-b-2 border-primary font-label-ui-sm text-label-ui-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">text_fields</span> Typography
+                </button>
+<button class="pb-2 px-3 text-on-surface-variant hover:text-on-surface transition-all font-label-ui-sm text-label-ui-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">aspect_ratio</span> Layout
+                </button>
+</div>
+<!-- Panel Content -->
+<div class="flex-1 overflow-y-auto p-4 space-y-6">
+<!-- Font Family -->
+<div>
+<label class="block font-label-ui-sm text-label-ui-sm text-on-surface-variant mb-2">Font Family</label>
+<div class="relative">
+<select class="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-primary focus:ring-0 py-1.5 px-0 font-body-ui-md text-body-ui-md text-on-surface appearance-none pr-8">
+<option>Source Serif 4</option>
+<option>Hanken Grotesk</option>
+<option>JetBrains Mono</option>
+<option>Amiri (Arabic)</option>
+</select>
+<span class="material-symbols-outlined absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-outline">arrow_drop_down</span>
+</div>
+</div>
+<!-- Font Size & Weight Grid -->
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block font-label-ui-sm text-label-ui-sm text-on-surface-variant mb-2">Size</label>
+<div class="flex items-center border-b border-outline-variant focus-within:border-primary">
+<input class="w-full bg-transparent border-none p-0 font-mono-ui text-mono-ui text-on-surface focus:ring-0" type="number" value="18"/>
+<span class="font-mono-ui text-mono-ui text-outline-variant pr-1">pt</span>
+</div>
+</div>
+<div>
+<label class="block font-label-ui-sm text-label-ui-sm text-on-surface-variant mb-2">Weight</label>
+<div class="relative">
+<select class="w-full bg-transparent border-b border-outline-variant focus:border-primary focus:ring-0 py-0.5 px-0 font-body-ui-md text-body-ui-md text-on-surface appearance-none">
+<option>Regular</option>
+<option>Medium</option>
+<option>SemiBold</option>
+<option>Bold</option>
+</select>
+</div>
+</div>
+</div>
+<!-- Spacing -->
+<div>
+<label class="block font-label-ui-sm text-label-ui-sm text-on-surface-variant mb-2">Line Height</label>
+<div class="flex items-center border-b border-outline-variant focus-within:border-primary">
+<input class="w-full bg-transparent border-none p-0 font-mono-ui text-mono-ui text-on-surface focus:ring-0" type="text" value="1.6"/>
+<span class="material-symbols-outlined text-outline-variant text-[16px]">format_line_spacing</span>
+</div>
+</div>
+<!-- Alignment -->
+<div>
+<label class="block font-label-ui-sm text-label-ui-sm text-on-surface-variant mb-2">Alignment</label>
+<div class="flex gap-1">
+<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant"><span class="material-symbols-outlined">format_align_left</span></button>
+<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant"><span class="material-symbols-outlined">format_align_center</span></button>
+<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant"><span class="material-symbols-outlined">format_align_right</span></button>
+<button class="p-1 rounded bg-surface-container-high text-primary"><span class="material-symbols-outlined">format_align_justify</span></button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- Footer Status Bar -->
+<footer class="fixed bottom-0 left-0 w-full h-statusbar-height bg-surface-container border-t border-outline-variant flex justify-between items-center px-4 z-50 font-mono-ui text-mono-ui text-on-surface-variant shrink-0">
+<div class="flex items-center gap-4">
+<span>Page 1 of 12</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span>4,200 words</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="hover:text-primary transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">zoom_in</span> 100% Zoom
+            </button>
+<span class="w-px h-4 bg-outline-variant"></span>
+<button class="hover:text-primary transition-colors flex items-center gap-1 bg-surface-container-high px-2 rounded">
+<span class="material-symbols-outlined text-[16px]">translate</span> RTL Toggle
+            </button>
+</div>
+</footer>
+</body></html>
