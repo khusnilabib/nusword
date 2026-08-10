@@ -31,8 +31,7 @@ const FOOTER_NAV: NavItem[] = [
   { key: "settings", label: "Settings", icon: "settings" },
 ];
 
-function greeting(): string {
-  const h = new Date().getHours();
+function greetingForHour(h: number): string {
   if (h < 11) return "Good morning";
   if (h < 15) return "Good afternoon";
   if (h < 19) return "Good evening";
@@ -42,6 +41,13 @@ function greeting(): string {
 export function DashboardView() {
   const openEditor = useNuswordStore((s) => s.openEditor);
   const [activeNav, setActiveNav] = React.useState("recent");
+
+  // Defer the time-based greeting until after hydration to avoid SSR/CSR
+  // mismatch (server clock vs client clock can yield different hours).
+  const [greetingText, setGreetingText] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setGreetingText(greetingForHour(new Date().getHours()));
+  }, []);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-on-surface">
@@ -56,7 +62,9 @@ export function DashboardView() {
             {/* Welcome */}
             <div className="mb-10 flex flex-col gap-1 md:mb-12">
               <h1 className="text-display-doc text-on-surface">
-                {greeting()}.
+                {/* Render a stable placeholder during SSR + before mount,
+                    then the real greeting after hydration. */}
+                {greetingText ? `${greetingText}.` : "Welcome."}
               </h1>
               <p className="text-body-ui-md text-on-surface-variant">
                 Pick up where you left off or start a new publication.
