@@ -2,34 +2,44 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useAuth } from "@/components/providers/auth-provider";
 
 /**
  * Login Page — /login route.
  *
- * Simple, paper-themed login form. Architecturally separate from the app.
- * On submit, redirects to /app (Phase 7: no real auth yet, just a placeholder).
+ * Uses Supabase Auth (via AuthProvider). Falls back to dev mode
+ * (auto-login) if Supabase is not configured.
  */
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { signIn, isDevMode } = useAuth();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const redirectTo = searchParams.get("redirect") || "/app";
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast.error("Email dan password wajib diisi");
       return;
     }
     setLoading(true);
-    // Phase 7: no real auth. Just redirect to the app.
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Berhasil masuk");
-      router.push("/app");
-    }, 500);
+    const { error } = await signIn(email, password);
+    setLoading(false);
+
+    if (error) {
+      toast.error(error);
+      return;
+    }
+
+    toast.success("Berhasil masuk");
+    router.push(redirectTo);
+    router.refresh();
   };
 
   return (
@@ -63,6 +73,21 @@ export default function LoginPage() {
       {/* Form area */}
       <main className="flex flex-1 items-center justify-center px-margin-mobile py-12">
         <div className="w-full max-w-sm">
+          {/* Dev mode banner */}
+          {isDevMode && (
+            <div
+              className="mb-6 rounded-lg border border-primary/30 bg-primary-fixed/20 p-3 text-center"
+              style={{ fontFamily: "var(--font-hanken-grotesk), sans-serif" }}
+            >
+              <p className="text-label-ui-sm text-primary">
+                Mode Pengembangan
+              </p>
+              <p className="text-body-ui-md mt-0.5 text-on-surface-variant">
+                Supabase belum dikonfigurasi. Login akan otomatis berhasil.
+              </p>
+            </div>
+          )}
+
           {/* Heading */}
           <div className="mb-8 text-center">
             <h1
@@ -89,7 +114,6 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
             <div>
               <label
                 className="mb-1.5 block text-on-surface-variant"
@@ -114,7 +138,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Password */}
             <div>
               <label
                 className="mb-1.5 block text-on-surface-variant"
@@ -139,7 +162,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}

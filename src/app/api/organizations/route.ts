@@ -4,11 +4,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { z } from "zod";
-
-/** Phase 7: no auth. Use a placeholder email. In production this would be
- *  the authenticated user's email. */
-const CURRENT_USER_EMAIL = "user@nusword.local";
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(100),
@@ -21,8 +18,13 @@ function slugify(name: string): string {
 }
 
 export async function GET() {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const memberships = await db.organizationMember.findMany({
-    where: { email: CURRENT_USER_EMAIL },
+    where: { email: userEmail },
     include: {
       organization: {
         include: {
@@ -49,6 +51,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
@@ -71,7 +78,7 @@ export async function POST(req: NextRequest) {
       description: parsed.data.description ?? null,
       members: {
         create: {
-          email: CURRENT_USER_EMAIL,
+          email: userEmail,
           name: "You",
           role: "owner",
         },
@@ -82,7 +89,7 @@ export async function POST(req: NextRequest) {
 
   // Log usage event.
   await db.usageEvent.create({
-    data: { email: CURRENT_USER_EMAIL, type: "organization.create", resourceId: org.id },
+    data: { email: userEmail, type: "organization.create", resourceId: org.id },
   });
 
   return NextResponse.json({

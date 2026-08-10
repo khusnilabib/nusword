@@ -12,8 +12,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 
 /** Format a Date as a YYYY-MM-DD string (UTC, for stable grouping across DB rows). */
 function toDayKey(d: Date): string {
@@ -21,6 +20,11 @@ function toDayKey(d: Date): string {
 }
 
 export async function GET(_req: NextRequest) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   // Counts of canonical resources owned by the current user. Phase 7 is
   // single-user (no ownerEmail column on Document/Book), so all non-deleted
   // rows belong to the placeholder user.
@@ -29,7 +33,7 @@ export async function GET(_req: NextRequest) {
     db.book.count({ where: { deletedAt: null } }),
     db.exportJob.count(),
     db.usageEvent.count({
-      where: { email: CURRENT_USER_EMAIL, type: "template.use" },
+      where: { email: userEmail, type: "template.use" },
     }),
   ]);
 
@@ -39,7 +43,7 @@ export async function GET(_req: NextRequest) {
   sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6); // inclusive of today + 6 prior days
 
   const recent = await db.usageEvent.findMany({
-    where: { email: CURRENT_USER_EMAIL, createdAt: { gte: sevenDaysAgo } },
+    where: { email: userEmail, createdAt: { gte: sevenDaysAgo } },
     select: { type: true, createdAt: true },
     orderBy: { createdAt: "asc" },
     take: 1000,

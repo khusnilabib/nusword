@@ -10,6 +10,7 @@
  *  - Main: greeting + document grid (New Document card + real documents)
  */
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "./icon";
 import { useNuswordStore } from "@/stores/nusword-store";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ import {
 } from "@/hooks/use-documents";
 import { useBooks, useCreateBook } from "@/hooks/use-books";
 import { useSharedWithMe } from "@/hooks/use-saas";
+import { useAuth } from "@/components/providers/auth-provider";
 import { relativeTime } from "@/lib/nusword/time";
 import { toast } from "sonner";
 import { TemplatesGallery } from "./templates-gallery";
@@ -295,6 +297,15 @@ function DashboardTopNav({
   search: string;
   onSearch: (v: string) => void;
 }) {
+  const { user, signOut, isDevMode } = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Berhasil keluar");
+    router.push("/login");
+  };
+
   return (
     <header className="z-50 flex h-toolbar-height w-full shrink-0 items-center justify-between border-b border-outline-variant bg-surface px-margin-mobile md:px-margin-desktop">
       <div className="flex min-w-0 items-center gap-4 md:gap-8">
@@ -332,6 +343,16 @@ function DashboardTopNav({
           className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-outline-variant bg-surface-container-low transition-colors hover:bg-surface-container active:opacity-80"
         >
           <Icon name="person" size={20} className="text-on-surface-variant" />
+        </button>
+        {/* Sign out */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          aria-label="Sign out"
+          title={isDevMode ? "Sign out (dev mode)" : `Sign out (${user?.email})`}
+          className="flex size-10 cursor-pointer items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary"
+        >
+          <Icon name="logout" size={20} />
         </button>
       </div>
     </header>

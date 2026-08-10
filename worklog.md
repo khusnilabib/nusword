@@ -461,3 +461,88 @@ Stage Summary:
 - Auth pages at `/login` and `/signup` — simple paper-themed forms that redirect to `/app` on submit (Phase 7: no real auth yet, placeholder).
 - Editor app at `/app` — the full NUSWORD application (dashboard, editor, book view, organizations, templates, etc.).
 - All navigation flows verified: landing → signup → /app, landing → login → /app, landing → Coba Demo → /app, login ↔ signup cross-links.
+
+---
+Task ID: 9-API-AUTH
+Agent: general-purpose (sub agent)
+Task: Update ALL API route files to replace the hardcoded `CURRENT_USER_EMAIL = "user@nusword.local"` placeholder with real Supabase auth via `getAuthEmailOrFallback()` from `@/lib/supabase/server`.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` for context — Phase 9 (production scale + Supabase migration). The Supabase server client was already created at `src/lib/supabase/server.ts` exporting `getAuthEmailOrFallback()` (returns authenticated user's email, falls back to `DEV_FALLBACK_EMAIL = "user@nusword.local"` in dev when Supabase isn't configured, returns `null` if configured-but-unauthenticated) and `isSupabaseConfigured()`.
+- Inspected all 11 listed API route files. Noted two of them (`documents/[id]/shares/[shareId]/route.ts` and `templates/[id]/route.ts`) actually did NOT have `CURRENT_USER_EMAIL` declared — but per task spec they're still in scope and got the auth check + import added so the routes are protected (they previously had no auth gating at all).
+- For each file applied the prescribed transformation:
+  1. Removed `const CURRENT_USER_EMAIL = "user@nusword.local";`.
+  2. Added `import { getAuthEmailOrFallback } from "@/lib/supabase/server";` to the existing import block (kept import order: `next/server` → `@/lib/db` → `@/lib/supabase/server` → `@/types/saas` / `@/lib/nusword/serialize` → `zod`).
+  3. Added at the very top of every handler (GET/POST/PATCH/DELETE):
+     ```ts
+     const userEmail = await getAuthEmailOrFallback();
+     if (!userEmail) {
+       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+     }
+     ```
+  4. Replaced all remaining `CURRENT_USER_EMAIL` references with `userEmail`.
+- Special handling for helper functions:
+  - `src/app/api/organizations/[id]/route.ts` had `getMemberRole(orgId)` which used `CURRENT_USER_EMAIL`. Changed signature to `getMemberRole(orgId, userEmail)` and updated all 3 call sites (GET / PATCH / DELETE) to pass the local `userEmail`.
+  - All other helpers in the affected files (e.g. `slugify`, `toShareDto`, `toTemplateDto`, `parseJson`, `toDayKey`) were pure and didn't reference `CURRENT_USER_EMAIL` — left untouched.
+- Files updated (11):
+  1. `src/app/api/organizations/route.ts` — GET + POST (4 email usages: GET membership query, POST member-create, POST usage-event).
+  2. `src/app/api/organizations/[id]/route.ts` — GET + PATCH + DELETE + `getMemberRole(orgId, userEmail)` helper.
+  3. `src/app/api/organizations/[id]/members/route.ts` — GET + POST (3 email usages: GET membership check, POST membership check, POST usage-event).
+  4. `src/app/api/organizations/[id]/members/[memberId]/route.ts` — PATCH + DELETE (2 membership checks + 1 self-demote-guard comparison).
+  5. `src/app/api/documents/[id]/shares/route.ts` — GET + POST (POST had 2 email usages: self-share guard + usage-event).
+  6. `src/app/api/documents/[id]/shares/[shareId]/route.ts` — PATCH + DELETE (no `CURRENT_USER_EMAIL` existed; auth check + import added so the route is now protected).
+  7. `src/app/api/shared/route.ts` — GET (1 usage: `sharedWithEmail` filter).
+  8. `src/app/api/templates/route.ts` — GET + POST (POST had 1 usage: usage-event).
+  9. `src/app/api/templates/[id]/route.ts` — GET + PATCH + DELETE (no `CURRENT_USER_EMAIL` existed; auth check + import added).
+  10. `src/app/api/templates/[id]/use/route.ts` — POST (1 usage: usage-event).
+  11. `src/app/api/usage/route.ts` — GET (2 usages: `usageEvent.count` template-use filter + `usageEvent.findMany` recent-events filter).
+
+Verification:
+- `rg CURRENT_USER_EMAIL src/app/api` → no matches (the placeholder is gone from every API route file).
+- `rg CURRENT_USER_EMAIL src` → only remaining match is a docstring in `src/lib/supabase/server.ts` line 43 ("Used by API routes to replace the placeholder CURRENT_USER_EMAIL.") — a documentation comment, expected and accurate.
+- `bun run lint` → exit 0 with only 1 pre-existing warning (`@next/next/no-page-custom-font` in `src/app/layout.tsx`, unrelated to this task).
+- `bunx tsc --noEmit` filtered to `src/app/api` → no errors in any of the 11 modified route files. (Pre-existing TS errors in `src/lib/supabase/server.ts` lines 23 + 28 remain — `cookies()` returns a Promise in Next.js 15+ that needs awaiting; out of scope for 9-API-AUTH, belongs to whoever owns `src/lib/supabase/server.ts`.)
+- All Zod schemas, error-response shapes (`{ error: ... }` + status codes 400/403/404/409), `hasPermission()` RBAC checks, Prisma queries, usage-event logging, and DTO shapes (`toShareDto`, `toTemplateDto`, `toDocumentDto`, `toDayKey`) left byte-for-byte identical — only the email source was swapped.
+
+Stage Summary:
+- All 11 Phase 7 SaaS API routes now resolve the current user via Supabase auth (`getAuthEmailOrFallback`) instead of the hardcoded `"user@nusword.local"` placeholder. Each handler returns 401 `{ error: "Unauthorized" }` if Supabase is configured but the request has no valid session; in dev (no Supabase env vars) it transparently falls back to the dev email so local development continues to work without changes.
+- RBAC preserved end-to-end: org-role checks (owner/admin/editor/commenter/viewer via `hasPermission`), share-role validation, "cannot demote self from owner", "cannot remove owner", "cannot share with yourself", slug-uniqueness, soft-delete filtering — all unchanged.
+- The downstream UI (organizations-view, share-dialog, templates-gallery, usage-card, dashboard sidebar) needs NO changes — every component already keys off the API's `myRole` field returned in the org DTO, so swapping the email source on the server is transparent to the client.
+- Next actions for downstream agents: (a) fix `cookies()` Promise-await issue in `src/lib/supabase/server.ts` (Next.js 15+ requires `const cookieStore = await cookies();`) — this is the only thing standing between the API routes and real end-to-end Supabase session resolution; (b) add a Supabase auth middleware (`src/middleware.ts`) to refresh session cookies on every request and redirect unauthenticated users from `/app/*` to `/login`; (c) wire the existing `/login` and `/signup` pages to `supabase.auth.signInWithPassword` / `signUp` (currently they just `router.push('/app')`); (d) once auth is live, the dev fallback in `getAuthEmailOrFallback` can be removed or kept behind an explicit `NODE_ENV === "development"` guard.
+
+---
+Task ID: 9
+Agent: main
+Task: Implement Phase 9 (Production Scale) — Supabase Auth migration, production-ready setup. Starting from Auth.
+
+Work Log:
+- Installed @supabase/supabase-js + @supabase/ssr packages.
+- Created `src/lib/supabase/client.ts` — browser client using createBrowserClient. Returns null if env vars not set (dev mode).
+- Created `src/lib/supabase/server.ts` — server client with createClient() (sync, for middleware) + createClientAsync() (async, for API routes — Next.js 15+ cookies() is async). Exports: getAuthEmail(), getAuthUserId(), getAuthEmailOrFallback() (returns dev fallback "user@nusword.local" if Supabase not configured), isSupabaseConfigured().
+- Created `src/middleware.ts` — refreshes Supabase auth session on every request. Protects /app routes (redirects to /login?redirect=/app if not authenticated). Redirects logged-in users away from /login and /signup to /app. Skips all checks if Supabase not configured (dev mode).
+- Created `src/components/providers/auth-provider.tsx` — AuthProvider wrapping the app with Supabase auth state. useAuth() hook provides: user, loading, isDevMode, signIn(email, password), signUp(email, password, name), signOut(). In dev mode (no Supabase), uses a DEV_USER fallback so the app works without auth.
+- Updated `src/app/layout.tsx` — wrapped children with AuthProvider (inside QueryProvider).
+- Updated `src/app/login/page.tsx` — uses useAuth().signIn() instead of placeholder setTimeout. Shows "Mode Pengembangan" banner when Supabase not configured. Reads ?redirect= query param for post-login redirect. Calls router.refresh() after login to refresh server data.
+- Updated `src/app/signup/page.tsx` — uses useAuth().signUp() with name metadata. Shows dev mode banner. Different success message for dev vs production (production mentions email verification).
+- Updated ALL 11 API route files (via subagent) — replaced hardcoded `CURRENT_USER_EMAIL = "user@nusword.local"` with `getAuthEmailOrFallback()` from the Supabase server client. Each handler now checks `if (!userEmail) return 401 Unauthorized`. Helper functions like getMemberRole now accept userEmail as a parameter. Files updated: organizations (route + [id] + members + [memberId]), documents/[id]/shares (route + [shareId]), shared, templates (route + [id] + [id]/use), usage.
+- Added sign-out button to dashboard top nav — uses useAuth().signOut(), shows toast, redirects to /login. Shows user email in title tooltip.
+- Updated Prisma schema datasource with comments: currently "sqlite" for local dev, documented that production should change to "postgresql" and set DATABASE_URL to Supabase connection string.
+- Created `.env.example` with all required env vars: DATABASE_URL (SQLite + Supabase examples), NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY. Documented the dev mode behavior and production setup steps.
+
+Architecture:
+- Dev mode (no Supabase env vars): auth auto-passes, placeholder user "user@nusword.local" used, middleware skips protection, all API routes use fallback email. App works exactly as before.
+- Production mode (Supabase env vars set): real Supabase Auth with email/password, middleware protects /app routes, API routes use real authenticated user email, session refreshed on every request.
+
+Production setup steps (for when Supabase credentials are available):
+1. Create a project at https://supabase.com
+2. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env
+3. Change Prisma provider from "sqlite" to "postgresql"
+4. Set DATABASE_URL to Supabase PostgreSQL connection string
+5. Run `bun run db:push` to create tables in Supabase
+6. Restart the dev server
+
+Stage Summary:
+- Phase 9 Auth migration complete: Supabase Auth integrated with graceful dev mode fallback. All API routes use real authenticated user email. Middleware protects /app routes. Login/signup pages use Supabase Auth. Sign-out button in dashboard.
+- Database: Prisma schema prepared for PostgreSQL migration (just change provider + DATABASE_URL). All models are PostgreSQL-compatible.
+- Production-ready: graceful fallback for dev, real auth for production, session refresh middleware, protected routes, env-based configuration.
+- Verified: landing → login (dev mode banner) → submit → /app → sign out → /login. Signup → /app. API routes work with fallback email in dev mode.

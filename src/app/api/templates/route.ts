@@ -8,9 +8,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { z } from "zod";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
 
 const VALID_CATEGORIES = ["academic", "business", "creative", "religious", "personal"] as const;
 
@@ -52,6 +51,11 @@ function toTemplateDto(row: {
 }
 
 export async function GET(req: NextRequest) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const category = searchParams.get("category");
 
@@ -70,6 +74,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
@@ -103,7 +112,7 @@ export async function POST(req: NextRequest) {
 
   await db.usageEvent.create({
     data: {
-      email: CURRENT_USER_EMAIL,
+      email: userEmail,
       type: "template.create",
       resourceId: template.id,
     },

@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { AuthProvider } from "@/components/providers/auth-provider";
 
 const hankenGrotesk = Hanken_Grotesk({
   variable: "--font-hanken-grotesk",
@@ -67,9 +68,11 @@ export default function RootLayout({
         className={`${hankenGrotesk.variable} ${sourceSerif4.variable} ${jetbrainsMono.variable} ${amiri.variable} font-ui antialiased bg-background text-foreground`}
       >
         <QueryProvider>
-          {children}
-          <Toaster />
-          <SonnerToaster position="bottom-right" />
+          <AuthProvider>
+            {children}
+            <Toaster />
+            <SonnerToaster position="bottom-right" />
+          </AuthProvider>
         </QueryProvider>
       </body>
     </html>

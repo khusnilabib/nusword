@@ -4,21 +4,23 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuth } from "@/components/providers/auth-provider";
 
 /**
  * Signup Page — /signup route.
  *
- * Simple, paper-themed signup form. Architecturally separate from the app.
- * On submit, redirects to /app (Phase 7: no real auth yet, just a placeholder).
+ * Uses Supabase Auth (via AuthProvider). Falls back to dev mode
+ * (auto-login) if Supabase is not configured.
  */
 export default function SignupPage() {
   const router = useRouter();
+  const { signUp, isDevMode } = useAuth();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !password) {
       toast.error("Semua field wajib diisi");
@@ -29,12 +31,21 @@ export default function SignupPage() {
       return;
     }
     setLoading(true);
-    // Phase 7: no real auth. Just redirect to the app.
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Akun berhasil dibuat");
-      router.push("/app");
-    }, 500);
+    const { error } = await signUp(email, password, name);
+    setLoading(false);
+
+    if (error) {
+      toast.error(error);
+      return;
+    }
+
+    toast.success(
+      isDevMode
+        ? "Akun berhasil dibuat"
+        : "Akun berhasil dibuat. Silakan cek email untuk verifikasi.",
+    );
+    router.push("/app");
+    router.refresh();
   };
 
   return (
@@ -68,6 +79,21 @@ export default function SignupPage() {
       {/* Form area */}
       <main className="flex flex-1 items-center justify-center px-margin-mobile py-12">
         <div className="w-full max-w-sm">
+          {/* Dev mode banner */}
+          {isDevMode && (
+            <div
+              className="mb-6 rounded-lg border border-primary/30 bg-primary-fixed/20 p-3 text-center"
+              style={{ fontFamily: "var(--font-hanken-grotesk), sans-serif" }}
+            >
+              <p className="text-label-ui-sm text-primary">
+                Mode Pengembangan
+              </p>
+              <p className="text-body-ui-md mt-0.5 text-on-surface-variant">
+                Supabase belum dikonfigurasi. Pendaftaran akan otomatis berhasil.
+              </p>
+            </div>
+          )}
+
           {/* Heading */}
           <div className="mb-8 text-center">
             <h1
@@ -94,7 +120,6 @@ export default function SignupPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Name */}
             <div>
               <label
                 className="mb-1.5 block text-on-surface-variant"
@@ -119,7 +144,6 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Email */}
             <div>
               <label
                 className="mb-1.5 block text-on-surface-variant"
@@ -144,7 +168,6 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Password */}
             <div>
               <label
                 className="mb-1.5 block text-on-surface-variant"
@@ -170,7 +193,6 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}

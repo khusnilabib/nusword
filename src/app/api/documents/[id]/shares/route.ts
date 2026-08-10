@@ -2,14 +2,12 @@
  * GET  /api/documents/[id]/shares  — list all shares for a document
  * POST /api/documents/[id]/shares  — share document with an email
  *
- * Phase 7: sharing without billing. The current user is identified by a
- * placeholder email (no auth yet). See PRD §19 — RBAC.
+ * Phase 7: sharing without billing. See PRD §19 — RBAC.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { z } from "zod";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
 
 const ShareSchema = z.object({
   email: z.string().email(),
@@ -40,6 +38,11 @@ function toShareDto(row: {
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   const doc = await db.document.findUnique({ where: { id } });
@@ -56,6 +59,11 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 }
 
 export async function POST(req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   const doc = await db.document.findUnique({ where: { id } });
@@ -73,7 +81,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 
   // Don't allow sharing with yourself (would be confusing in the UI).
-  if (parsed.data.email.toLowerCase() === CURRENT_USER_EMAIL.toLowerCase()) {
+  if (parsed.data.email.toLowerCase() === userEmail.toLowerCase()) {
     return NextResponse.json(
       { error: "Cannot share with yourself" },
       { status: 400 },
@@ -104,7 +112,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
   await db.usageEvent.create({
     data: {
-      email: CURRENT_USER_EMAIL,
+      email: userEmail,
       type: "document.share",
       resourceId: share.id,
       metadata: JSON.stringify({

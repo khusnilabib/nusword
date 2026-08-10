@@ -4,10 +4,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { hasPermission, type OrgRole } from "@/types/saas";
 import { z } from "zod";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
 
 const PatchSchema = z.object({
   role: z.enum(["owner", "admin", "editor", "commenter", "viewer"]),
@@ -16,9 +15,14 @@ const PatchSchema = z.object({
 type Ctx = { params: Promise<{ id: string; memberId: string }> };
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id, memberId } = await params;
   const myMembership = await db.organizationMember.findUnique({
-    where: { organizationId_email: { organizationId: id, email: CURRENT_USER_EMAIL } },
+    where: { organizationId_email: { organizationId: id, email: userEmail } },
   });
   if (!myMembership || !hasPermission(myMembership.role as OrgRole, "org.members.manage")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -34,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!targetMember || targetMember.organizationId !== id) {
     return NextResponse.json({ error: "Member not found" }, { status: 404 });
   }
-  if (targetMember.email === CURRENT_USER_EMAIL && targetMember.role === "owner" && parsed.data.role !== "owner") {
+  if (targetMember.email === userEmail && targetMember.role === "owner" && parsed.data.role !== "owner") {
     return NextResponse.json({ error: "Cannot demote yourself from owner" }, { status: 400 });
   }
 
@@ -46,9 +50,14 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id, memberId } = await params;
   const myMembership = await db.organizationMember.findUnique({
-    where: { organizationId_email: { organizationId: id, email: CURRENT_USER_EMAIL } },
+    where: { organizationId_email: { organizationId: id, email: userEmail } },
   });
   if (!myMembership || !hasPermission(myMembership.role as OrgRole, "org.members.manage")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

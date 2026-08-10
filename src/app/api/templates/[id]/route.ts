@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { z } from "zod";
 
 const PatchSchema = z.object({
@@ -30,6 +31,11 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const template = await db.template.findUnique({ where: { id } });
   if (!template) {
@@ -55,6 +61,11 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const existing = await db.template.findUnique({ where: { id } });
   if (!existing) {
@@ -112,6 +123,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const existing = await db.template.findUnique({ where: { id } });
   if (!existing) {

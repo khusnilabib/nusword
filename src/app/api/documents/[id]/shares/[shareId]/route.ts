@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { z } from "zod";
 
 const PatchSchema = z.object({
@@ -36,6 +37,11 @@ function toShareDto(row: {
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id, shareId } = await params;
 
   const doc = await db.document.findUnique({ where: { id } });
@@ -66,6 +72,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id, shareId } = await params;
 
   const doc = await db.document.findUnique({ where: { id } });

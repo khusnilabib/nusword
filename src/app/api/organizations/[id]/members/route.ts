@@ -4,10 +4,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { hasPermission, type OrgRole } from "@/types/saas";
 import { z } from "zod";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
 
 const InviteSchema = z.object({
   email: z.string().email(),
@@ -18,9 +17,14 @@ const InviteSchema = z.object({
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const role = await db.organizationMember.findUnique({
-    where: { organizationId_email: { organizationId: id, email: CURRENT_USER_EMAIL } },
+    where: { organizationId_email: { organizationId: id, email: userEmail } },
   });
   if (!role) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -43,9 +47,14 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 }
 
 export async function POST(req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const myMembership = await db.organizationMember.findUnique({
-    where: { organizationId_email: { organizationId: id, email: CURRENT_USER_EMAIL } },
+    where: { organizationId_email: { organizationId: id, email: userEmail } },
   });
   if (!myMembership || !hasPermission(myMembership.role as OrgRole, "org.members.manage")) {
     return NextResponse.json({ error: "Forbidden — admin or owner only" }, { status: 403 });
@@ -75,7 +84,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   });
 
   await db.usageEvent.create({
-    data: { email: CURRENT_USER_EMAIL, type: "organization.member.invite", resourceId: member.id },
+    data: { email: userEmail, type: "organization.member.invite", resourceId: member.id },
   });
 
   return NextResponse.json({

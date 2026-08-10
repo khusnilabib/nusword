@@ -11,6 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import {
   parseContent,
   parseSettings,
@@ -19,8 +20,6 @@ import {
   toDocumentDto,
 } from "@/lib/nusword/serialize";
 import { z } from "zod";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
 
 const UseSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -39,6 +38,11 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 }
 
 export async function POST(req: NextRequest, { params }: Ctx) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   const template = await db.template.findUnique({ where: { id } });
@@ -79,7 +83,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
   await db.usageEvent.create({
     data: {
-      email: CURRENT_USER_EMAIL,
+      email: userEmail,
       type: "template.use",
       resourceId: doc.id,
       metadata: JSON.stringify({ templateId: id, templateTitle: template.title }),

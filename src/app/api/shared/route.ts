@@ -1,17 +1,21 @@
 /**
  * GET /api/shared — list documents shared WITH the current user (by email).
  *
- * Returns shares for the placeholder user, joined with their Document to
+ * Returns shares for the current user, joined with their Document to
  * surface the document title for UI display.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-
-const CURRENT_USER_EMAIL = "user@nusword.local";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 
 export async function GET(_req: NextRequest) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const shares = await db.sharedDocument.findMany({
-    where: { sharedWithEmail: CURRENT_USER_EMAIL },
+    where: { sharedWithEmail: userEmail },
     include: {
       document: {
         select: { id: true, title: true, deletedAt: true },
