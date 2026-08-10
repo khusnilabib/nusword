@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Hanken_Grotesk, Source_Serif_4, JetBrains_Mono, Amiri } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { QueryProvider } from "@/components/providers/query-provider";
 
 const hankenGrotesk = Hanken_Grotesk({
   variable: "--font-hanken-grotesk",
@@ -64,8 +66,11 @@ export default function RootLayout({
       <body
         className={`${hankenGrotesk.variable} ${sourceSerif4.variable} ${jetbrainsMono.variable} ${amiri.variable} font-ui antialiased bg-background text-foreground`}
       >
-        {children}
-        <Toaster />
+        <QueryProvider>
+          {children}
+          <Toaster />
+          <SonnerToaster position="bottom-right" />
+        </QueryProvider>
       </body>
     </html>
   );

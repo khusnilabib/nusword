@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// NUSWORD Prisma schema
+// learn more at: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -13,6 +10,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// A single user (Phase 2: single-user, no auth yet).
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -21,12 +19,43 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+/// Canonical document — the source of truth for a publication.
+/// Content is stored as Tiptap/ProseMirror JSON (structured, not raw HTML).
+/// Settings hold page/layout configuration as a JSON string.
+model Document {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  title     String   @default("Untitled")
+  /// Tiptap JSON document (stringified). See PRD §13 Canonical Document Model.
+  content   String   @default("")
+  /// PageSettings JSON (stringified): pageSize, orientation, margins, bleed, languageDirection.
+  settings  String   @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Soft-delete: documents go to trash before permanent deletion (PRD §25).
+  deletedAt DateTime?
+
+  versions DocumentVersion[]
+
+  @@index([deletedAt])
+  @@index([updatedAt])
+}
+
+/// Immutable document version snapshot (PRD §13: "Keep document versions
+/// immutable so users can restore previous states").
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// Snapshot of the Tiptap JSON content at version creation time.
+  content    String
+  /// Snapshot of PageSettings JSON at version creation time.
+  settings   String
+  /// Sequential version number per document.
+  version    Int
+  /// Optional human-readable label (e.g. "Before AI rewrite").
+  message    String?
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, version])
+  @@index([documentId])
 }
