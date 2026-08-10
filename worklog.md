@@ -885,3 +885,25 @@ Stage Summary:
 - Three-mode architecture: app works in dev mode (no backend), can switch to Encore (set NEXT_PUBLIC_API_BASE_URL), or use Supabase (set NEXT_PUBLIC_SUPABASE_URL).
 - To activate Encore: `cd backend && encore run` + set `NEXT_PUBLIC_API_BASE_URL=http://localhost:4000` in .env + restart Next.js.
 - All API endpoint paths mirror the Next.js API routes exactly, so frontend hooks need minimal changes (just swap fetch() → authFetch()).
+
+---
+Task ID: GITHUB-PUSH
+Agent: main
+Task: Push NUSWORD project to GitHub for deployment.
+
+Work Log:
+- Checked git status: all files already committed on `main` branch (227 tracked files).
+- Verified .env contained only DATABASE_URL (no secrets), but removed it from git tracking anyway for security best practice.
+- Added .env, .env.local, .env.*.local to .gitignore. Committed this change.
+- Retrieved GitHub username from PAT: `khusnilabib`.
+- Created new GitHub repository via API: `khusnilabib/nusword` (public, with description).
+- Added remote origin with token authentication, pushed all commits to GitHub.
+- Verified push: repository is live at https://github.com/khusnilabib/nusword
+- Secured remote URL: removed token from git config (replaced with clean HTTPS URL).
+
+Stage Summary:
+- Repository live at: https://github.com/khusnilabib/nusword
+- Default branch: main
+- All 9 phases of NUSWORD are in the repo (landing page, auth, editor, books, kitab, export, SaaS, Encore backend).
+- .env excluded from repo (users need to copy .env.example and fill in their own values).
+- Ready for deployment via GitHub (Vercel, Encore Cloud, or any platform that connects to GitHub).
