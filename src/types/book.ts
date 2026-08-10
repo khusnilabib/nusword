@@ -13,6 +13,8 @@
  */
 import type { JSONContent } from "@tiptap/react";
 import type { PageSettings } from "./document";
+import type { KitabSettings } from "./kitab";
+import { DEFAULT_KITAB_SETTINGS } from "./kitab";
 
 /** Book binding types. */
 export type BindingType = "perfect" | "saddle" | "case" | "spiral";
@@ -76,6 +78,8 @@ export interface BookSettings {
     /** Number of sheets per booklet signature. */
     sheetsPerSignature: number;
   };
+  /** Kitab profile (Phase 6: RTL, Arabic typography, bilingual, footnotes, ornaments). */
+  kitab: KitabSettings;
 }
 
 export const DEFAULT_BOOK_SETTINGS: BookSettings = {
@@ -117,6 +121,7 @@ export const DEFAULT_BOOK_SETTINGS: BookSettings = {
   booklet: {
     sheetsPerSignature: 4,
   },
+  kitab: { ...DEFAULT_KITAB_SETTINGS },
 };
 
 /** A chapter in the book's chapter tree. */

@@ -93,7 +93,7 @@ export interface HeaderFooterConfig {
   right: string;
 }
 
-export type PageNumberFormat = "decimal" | "roman" | "none";
+export type PageNumberFormat = "decimal" | "roman" | "arabic-indic" | "none";
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
   schemaVersion: DOCUMENT_SCHEMA_VERSION,

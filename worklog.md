@@ -166,3 +166,39 @@ Stage Summary:
 - Architecture: Book owns metadata + chapter references + book-specific settings. Each chapter references a Document (the chapter content). Front/back matter stored as JSON arrays. Imposition is a separate pure function module (PRD §15: "Imposition must be a separate service/module from document editing").
 - Verified via Agent Browser: dashboard shows Books section with New Book card → created book → book editor opened with chapter tree sidebar → added chapter → chapter editor loaded Tiptap with autosave → settings panel shows binding options (4 types) → selecting Saddle Stitch revealed booklet imposition section → front matter panel shows all 6 section types → added Cover section → TOC preview shows "Chapter 1".
 - Next phases: Phase 6 = kitab/RTL (Arabic typography, bilingual blocks, footnotes, ornaments); Phase 8 = AI.
+
+---
+Task ID: 6
+Agent: main
+Task: Implement Phase 6 (Kitab & RTL) — Arabic/RTL typography, bilingual blocks, footnotes, ornaments, kitab profiles, traditional layouts.
+
+Work Log:
+- Extended `PageNumberFormat` in `src/types/document.ts` to include "arabic-indic" (٠١٢٣).
+- Updated `formatPageNumber()` in `src/lib/nusword/pagination.ts` to support Arabic-Indic numeral conversion via `toArabicIndic()` function.
+- Wrote `src/types/kitab.ts` — KitabSettings interface (enabled, arabicFont, arabicFontSizePt, arabicLineHeight, translationFont, translationFontSizePt, bilingualLayout, ornamentStyle, footnotes config, traditionalHeader config, arabicPageNumbers, basmalaPerChapter), DEFAULT_KITAB_SETTINGS, ORNAMENT_STYLES (6 styles: none/diamond/star/arabesque/line-double/line-ornate), BILINGUAL_LAYOUTS (4 modes: side-by-side/stacked/interlinear/arabic-only), ARABIC_FONTS (Amiri/Scheherazade/Noto Naskh/Noto Kufi), ARABIC_PHRASES (basmala/takbir/shahada).
+- Extended `BookSettings` in `src/types/book.ts` with `kitab: KitabSettings` field + updated DEFAULT_BOOK_SETTINGS.
+- Updated `src/lib/nusword/book-serialize.ts` parseBookSettings() to deep-merge kitab settings (including nested footnotes + traditionalHeader).
+- Wrote `src/components/nusword/editor/kitab-extensions.ts` — 4 custom Tiptap nodes:
+  - **Footnote**: inline atom node with superscript number + tooltip text attribute.
+  - **BilingualBlock**: block atom with arabic + translation attributes, renders as 2-column grid (Arabic RTL + translation LTR). Uses attributes (not content holes) because ProseMirror doesn't support multiple content holes per node.
+  - **Ornament**: block atom with style attribute (diamond/star/arabesque/line-double/line-ornate), renders decorative divider with appropriate symbol.
+  - **Basmala**: block atom that renders the basmala phrase in decorative Amiri font.
+  Each node has a corresponding Tiptap command: setFootnote, setBilingualBlock, setOrnament, setBasmala.
+- Registered all 4 kitab extensions in `nusword-editor.tsx` + added 4 toolbar buttons (footnote, bilingual block, ornament, basmala) with a divider separating them from the standard toolbar.
+- Added comprehensive kitab CSS to `globals.css`: Arabic text styling (Amiri font, 2.0 line-height, RTL direction), footnote reference (superscript, primary color), footnote text (bottom of page), bilingual block (grid layout with Arabic right + translation left, stacked variant), ornaments (6 styles with appropriate symbols), basmala (centered, large, decorative), traditional kitab header (bordered), RTL list adjustments.
+- Built KitabProfileEditor component in `book-view.tsx` — appears in the book Settings tab when scrolled down. Contains:
+  - **Enable Kitab Mode** toggle (when enabled, auto-sets RTL + Amiri font + Arabic-Indic page numbers).
+  - **Arabic Typography**: font selection (4 Arabic fonts), font size, line height, translation font.
+  - **Bilingual Layout**: 4 layout modes (side-by-side, stacked, interlinear, arabic-only) with icons + descriptions.
+  - **Ornament Style**: 6 ornament styles with visual previews.
+  - **Footnotes**: enable toggle, numbering (arabic-indic/decimal/per-page), position (bottom/margin).
+  - **Traditional Kitab Header**: enable toggle, custom Arabic text input (RTL), decorative border toggle.
+  - **Page Numbering & Basmala**: Arabic-Indic page numbers toggle, basmala per chapter toggle.
+- Added "arabic-indic" option to the Page Number Format selector in the editor's Layout panel.
+- Fixed race condition in KitabProfileEditor: combining kitab + pageSettings patches into a single onUpdate call (previously two separate mutations overwrote each other).
+
+Stage Summary:
+- Phase 6 complete: Kitab engine with RTL/Arabic typography (Amiri font, Arabic-Indic numerals ٠١٢٣), bilingual blocks (side-by-side Arabic + translation with 4 layout modes), footnotes (3 numbering styles, 2 positions), ornaments (6 decorative divider styles), basmala (special decorative block), traditional kitab headers (with decorative border), kitab profile toggle (auto-configures RTL + Arabic font + Arabic page numbers).
+- Architecture: Kitab is a profile within BookSettings (not a separate entity). The kitab extensions are Tiptap nodes that work in both the editor and preview/export. Arabic-Indic numeral conversion is a pure function in the pagination engine. BilingualBlock uses attributes (not content holes) because ProseMirror doesn't support multiple editable content areas per node.
+- Verified via Agent Browser: book settings shows Kitab Profile section → enabling kitab mode expands all settings (Arabic Typography, Bilingual Layout, Ornament Style, Footnotes, Traditional Header, Page Numbering & Basmala) → chapter editor has 4 kitab toolbar buttons (footnote, bilingual, ornament, basmala) → inserted bilingual block with basmala Arabic text + English translation rendered correctly (Arabic RTL right, translation LTR left) → ornament dividers (◆) render correctly.
+- Next phases: Phase 7 = SaaS (organizations, sharing, roles, billing); Phase 8 = AI (prompt-to-outline, rewrite, summarize).

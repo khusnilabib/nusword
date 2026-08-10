@@ -35,6 +35,18 @@ export function parseBookSettings(raw: string | null | undefined): BookSettings 
           ...DEFAULT_BOOK_SETTINGS.booklet,
           ...(parsed.booklet || {}),
         },
+        kitab: {
+          ...DEFAULT_BOOK_SETTINGS.kitab,
+          ...(parsed.kitab || {}),
+          footnotes: {
+            ...DEFAULT_BOOK_SETTINGS.kitab.footnotes,
+            ...((parsed.kitab || {}).footnotes || {}),
+          },
+          traditionalHeader: {
+            ...DEFAULT_BOOK_SETTINGS.kitab.traditionalHeader,
+            ...((parsed.kitab || {}).traditionalHeader || {}),
+          },
+        },
       };
     }
   } catch {

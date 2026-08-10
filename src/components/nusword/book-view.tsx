@@ -40,6 +40,7 @@ import {
   type BackMatterType,
   type ChapterNode,
 } from "@/types/book";
+import { ORNAMENT_STYLES, BILINGUAL_LAYOUTS, ARABIC_FONTS } from "@/types/kitab";
 import { calculateBookletImposition } from "@/lib/nusword/imposition";
 import type { JSONContent, PageSettings } from "@/types/document";
 
@@ -948,8 +949,326 @@ function BookSettingsEditor({ bookId, book }: { bookId: string; book: any }) {
             </div>
           </div>
         )}
+
+        {/* Kitab Profile (Phase 6) */}
+        <KitabProfileEditor settings={settings} onUpdate={update} />
       </div>
     </main>
+  );
+}
+
+/* ================================================================
+   Kitab Profile Editor (Phase 6)
+   ================================================================ */
+
+function KitabProfileEditor({
+  settings,
+  onUpdate,
+}: {
+  settings: BookSettings;
+  onUpdate: (patch: Partial<BookSettings>) => void;
+}) {
+  const kitab = settings.kitab;
+
+  const updateKitab = (patch: Partial<typeof kitab>) => {
+    onUpdate({ kitab: { ...kitab, ...patch } });
+  };
+
+  const updateFootnotes = (patch: Partial<typeof kitab.footnotes>) => {
+    updateKitab({ footnotes: { ...kitab.footnotes, ...patch } });
+  };
+
+  const updateTraditionalHeader = (patch: Partial<typeof kitab.traditionalHeader>) => {
+    updateKitab({ traditionalHeader: { ...kitab.traditionalHeader, ...patch } });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Icon name="auto_stories" size={24} className="text-primary" />
+        <div>
+          <h2 className="text-headline-ui-md text-on-surface">Kitab Profile</h2>
+          <p className="text-body-ui-md text-on-surface-variant">
+            Islamic/Arabic publishing: RTL, Arabic typography, bilingual blocks, footnotes, ornaments.
+          </p>
+        </div>
+      </div>
+
+      {/* Enable Kitab */}
+      <label className="flex cursor-pointer items-center justify-between rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
+        <div>
+          <div className="text-body-ui-md font-semibold text-on-surface">Enable Kitab Mode</div>
+          <div className="text-label-ui-sm text-on-surface-variant">
+            Activates RTL, Arabic fonts, bilingual layout, footnotes, and ornaments.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const enabled = !kitab.enabled;
+            // Combine kitab + pageSettings changes into a single update to
+            // avoid race conditions between two separate mutations.
+            const patch: Partial<BookSettings> = {
+              kitab: { ...kitab, enabled },
+            };
+            if (enabled) {
+              patch.pageSettings = {
+                ...settings.pageSettings,
+                languageDirection: "rtl",
+                fontFamily: "Amiri",
+                pageNumberFormat: "arabic-indic",
+              };
+            }
+            onUpdate(patch);
+          }}
+          className={cn(kitab.enabled ? "text-primary" : "text-on-surface-variant")}
+        >
+          <Icon name={kitab.enabled ? "toggle_on" : "toggle_off"} size={32} />
+        </button>
+      </label>
+
+      {kitab.enabled && (
+        <div className="space-y-6 rounded-lg border border-primary/30 bg-primary-fixed/10 p-4">
+          {/* Arabic Typography */}
+          <div className="space-y-3">
+            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+              <Icon name="text_fields" size={18} />
+              Arabic Typography
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Arabic Font</label>
+                <select
+                  value={kitab.arabicFont}
+                  onChange={(e) => updateKitab({ arabicFont: e.target.value })}
+                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                >
+                  {ARABIC_FONTS.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Arabic Font Size (pt)</label>
+                <input
+                  type="number"
+                  value={kitab.arabicFontSizePt}
+                  onChange={(e) => updateKitab({ arabicFontSizePt: parseFloat(e.target.value) || 16 })}
+                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Arabic Line Height</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={kitab.arabicLineHeight}
+                  onChange={(e) => updateKitab({ arabicLineHeight: parseFloat(e.target.value) || 2.0 })}
+                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Translation Font</label>
+                <select
+                  value={kitab.translationFont}
+                  onChange={(e) => updateKitab({ translationFont: e.target.value })}
+                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                >
+                  <option value="Source Serif 4">Source Serif 4</option>
+                  <option value="Hanken Grotesk">Hanken Grotesk</option>
+                  <option value="JetBrains Mono">JetBrains Mono</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Bilingual Layout */}
+          <div className="space-y-3">
+            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+              <Icon name="view_column" size={18} />
+              Bilingual Layout
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              {BILINGUAL_LAYOUTS.map((layout) => (
+                <button
+                  key={layout.type}
+                  type="button"
+                  onClick={() => updateKitab({ bilingualLayout: layout.type })}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2 rounded border p-2 text-left transition-colors",
+                    kitab.bilingualLayout === layout.type
+                      ? "border-primary bg-surface-container-lowest"
+                      : "border-outline-variant hover:bg-surface-container-low",
+                  )}
+                >
+                  <Icon name={layout.icon} size={18} className={kitab.bilingualLayout === layout.type ? "text-primary" : "text-on-surface-variant"} />
+                  <div>
+                    <div className="text-body-ui-md font-medium text-on-surface">{layout.label}</div>
+                    <div className="text-label-ui-sm text-on-surface-variant">{layout.description}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ornaments */}
+          <div className="space-y-3">
+            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+              <Icon name="auto_awesome" size={18} />
+              Ornament Style
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              {ORNAMENT_STYLES.map((orn) => (
+                <button
+                  key={orn.type}
+                  type="button"
+                  onClick={() => updateKitab({ ornamentStyle: orn.type })}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-center gap-1 rounded border p-2 transition-colors",
+                    kitab.ornamentStyle === orn.type
+                      ? "border-primary bg-surface-container-lowest"
+                      : "border-outline-variant hover:bg-surface-container-low",
+                  )}
+                >
+                  {orn.preview && (
+                    <span className="text-lg text-primary" style={{ fontFamily: "var(--font-amiri), serif" }}>
+                      {orn.preview}
+                    </span>
+                  )}
+                  <span className="text-label-ui-sm text-on-surface-variant">{orn.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Footnotes */}
+          <div className="space-y-3">
+            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+              <Icon name="superscript" size={18} />
+              Footnotes
+            </h3>
+            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+              <span className="text-body-ui-md text-on-surface">Enable footnotes</span>
+              <button
+                type="button"
+                onClick={() => updateFootnotes({ enabled: !kitab.footnotes.enabled })}
+                className={cn(kitab.footnotes.enabled ? "text-primary" : "text-on-surface-variant")}
+              >
+                <Icon name={kitab.footnotes.enabled ? "toggle_on" : "toggle_off"} size={24} />
+              </button>
+            </label>
+            {kitab.footnotes.enabled && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Numbering</label>
+                  <select
+                    value={kitab.footnotes.numbering}
+                    onChange={(e) => updateFootnotes({ numbering: e.target.value as any })}
+                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                  >
+                    <option value="arabic-indic">Arabic-Indic (٠١٢٣)</option>
+                    <option value="decimal">Decimal (1234)</option>
+                    <option value="per-page">Per page (reset each page)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Position</label>
+                  <select
+                    value={kitab.footnotes.position}
+                    onChange={(e) => updateFootnotes({ position: e.target.value as any })}
+                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                  >
+                    <option value="bottom">Bottom of page</option>
+                    <option value="margin">Margin (side notes)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Traditional Header */}
+          <div className="space-y-3">
+            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+              <Icon name="border_color" size={18} />
+              Traditional Kitab Header
+            </h3>
+            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+              <span className="text-body-ui-md text-on-surface">Enable traditional header</span>
+              <button
+                type="button"
+                onClick={() => updateTraditionalHeader({ enabled: !kitab.traditionalHeader.enabled })}
+                className={cn(kitab.traditionalHeader.enabled ? "text-primary" : "text-on-surface-variant")}
+              >
+                <Icon name={kitab.traditionalHeader.enabled ? "toggle_on" : "toggle_off"} size={24} />
+              </button>
+            </label>
+            {kitab.traditionalHeader.enabled && (
+              <>
+                <div>
+                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Custom header text (Arabic)</label>
+                  <input
+                    type="text"
+                    value={kitab.traditionalHeader.customText}
+                    onChange={(e) => updateTraditionalHeader({ customText: e.target.value })}
+                    placeholder="e.g. سورة البقرة"
+                    dir="rtl"
+                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+                    style={{ fontFamily: "var(--font-amiri), serif" }}
+                  />
+                </div>
+                <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+                  <span className="text-body-ui-md text-on-surface">Decorative border around header</span>
+                  <button
+                    type="button"
+                    onClick={() => updateTraditionalHeader({ border: !kitab.traditionalHeader.border })}
+                    className={cn(kitab.traditionalHeader.border ? "text-primary" : "text-on-surface-variant")}
+                  >
+                    <Icon name={kitab.traditionalHeader.border ? "toggle_on" : "toggle_off"} size={24} />
+                  </button>
+                </label>
+              </>
+            )}
+          </div>
+
+          {/* Page Numbering & Basmala */}
+          <div className="space-y-2">
+            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+              <Icon name="format_list_numbered" size={18} />
+              Page Numbering & Basmala
+            </h3>
+            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+              <span className="text-body-ui-md text-on-surface">Arabic-Indic page numbers (٠١٢٣)</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const arabicPageNumbers = !kitab.arabicPageNumbers;
+                  onUpdate({
+                    kitab: { ...kitab, arabicPageNumbers },
+                    pageSettings: {
+                      ...settings.pageSettings,
+                      pageNumberFormat: arabicPageNumbers ? "arabic-indic" : "decimal",
+                    },
+                  });
+                }}
+                className={cn(kitab.arabicPageNumbers ? "text-primary" : "text-on-surface-variant")}
+              >
+                <Icon name={kitab.arabicPageNumbers ? "toggle_on" : "toggle_off"} size={24} />
+              </button>
+            </label>
+            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+              <span className="text-body-ui-md text-on-surface">Basmala at start of each chapter</span>
+              <button
+                type="button"
+                onClick={() => updateKitab({ basmalaPerChapter: !kitab.basmalaPerChapter })}
+                className={cn(kitab.basmalaPerChapter ? "text-primary" : "text-on-surface-variant")}
+              >
+                <Icon name={kitab.basmalaPerChapter ? "toggle_on" : "toggle_off"} size={24} />
+              </button>
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

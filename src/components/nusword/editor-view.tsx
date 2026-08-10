@@ -1149,7 +1149,7 @@ function LayoutPanel({
 
       <Field label="Page Number Format">
         <div className="flex gap-1">
-          {(["decimal", "roman", "none"] as const).map((fmt) => (
+          {(["decimal", "roman", "arabic-indic", "none"] as const).map((fmt) => (
             <button
               key={fmt}
               type="button"
@@ -1161,7 +1161,7 @@ function LayoutPanel({
                   : "border-outline-variant text-on-surface-variant hover:bg-surface-container-lowest",
               )}
             >
-              {fmt}
+              {fmt === "arabic-indic" ? "arabic" : fmt}
             </button>
           ))}
         </div>

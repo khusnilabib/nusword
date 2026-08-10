@@ -28,6 +28,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import type { JSONContent } from "@tiptap/react";
 import { PageBreak } from "./page-break";
+import { Footnote, BilingualBlock, Ornament, Basmala } from "./kitab-extensions";
 import { Icon } from "../icon";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +100,11 @@ export function NuswordEditor({
       TableHeader,
       TableCell.configure({ width: "auto" }),
       PageBreak,
+      // Kitab extensions (Phase 6: footnotes, bilingual, ornaments, basmala)
+      Footnote,
+      BilingualBlock,
+      Ornament,
+      Basmala,
     ],
     content: initialContent,
     editable,
@@ -387,6 +393,32 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
         label="Insert page break"
         icon="more_horiz"
         onClick={() => editor.chain().focus().setPageBreak().run()}
+      />
+      <TbDivider />
+
+      {/* Kitab toolbar (Phase 6) */}
+      <TbBtn
+        label="Insert footnote"
+        icon="superscript"
+        onClick={() => {
+          const text = prompt("Footnote text:");
+          if (text) editor.chain().focus().setFootnote(text).run();
+        }}
+      />
+      <TbBtn
+        label="Insert bilingual block (Arabic + translation)"
+        icon="view_column"
+        onClick={() => editor.chain().focus().setBilingualBlock("", "").run()}
+      />
+      <TbBtn
+        label="Insert ornament"
+        icon="auto_awesome"
+        onClick={() => editor.chain().focus().setOrnament("diamond").run()}
+      />
+      <TbBtn
+        label="Insert basmala"
+        icon="menu_book"
+        onClick={() => editor.chain().focus().setBasmala().run()}
       />
     </div>
   );

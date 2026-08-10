@@ -253,15 +253,29 @@ function extractText(node: JSONContent): string {
 }
 
 /**
- * Format a page number according to the settings (decimal / roman / none).
+ * Format a page number according to the settings (decimal / roman / arabic-indic / none).
  */
 export function formatPageNumber(
   n: number,
-  format: "decimal" | "roman" | "none",
+  format: "decimal" | "roman" | "arabic-indic" | "none",
 ): string {
   if (format === "none") return "";
   if (format === "roman") return toRoman(n);
+  if (format === "arabic-indic") return toArabicIndic(n);
   return String(n);
+}
+
+/** Convert a number to Arabic-Indic digits (٠-٩). Used for kitab page numbers. */
+function toArabicIndic(n: number): string {
+  const arabicDigits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  if (n === 0) return arabicDigits[0];
+  let result = "";
+  let num = Math.abs(n);
+  while (num > 0) {
+    result = arabicDigits[num % 10] + result;
+    num = Math.floor(num / 10);
+  }
+  return n < 0 ? "−" + result : result;
 }
 
 function toRoman(num: number): string {

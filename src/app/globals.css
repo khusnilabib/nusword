@@ -721,3 +721,169 @@ input[type="number"] {
   text-align: center;
   padding: 2px 0;
 }
+
+/* ============================================================
+   Kitab Engine — RTL, Arabic typography, bilingual, footnotes, ornaments
+   (PRD §15: Kitab Engine, §6 Phase 6)
+   ============================================================ */
+
+/* Arabic text — uses Amiri font with larger line height for readability */
+.nusword-prose[dir="rtl"],
+.nusword-prose .nusword-arabic-text {
+  font-family: var(--font-amiri), "Scheherazade New", "Noto Naskh Arabic", serif;
+  font-size: 1.15em;
+  line-height: 2.0;
+  direction: rtl;
+  text-align: right;
+}
+
+/* Footnote reference (superscript) */
+.nusword-prose .nusword-footnote-ref {
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  vertical-align: super;
+  line-height: 0;
+  padding: 0 1px;
+  user-select: none;
+}
+.nusword-prose .nusword-footnote-ref:hover {
+  text-decoration: underline;
+}
+
+/* Footnote text at bottom of page (rendered in preview) */
+.nusword-preview-footnotes {
+  border-top: 1px solid var(--outline-variant);
+  padding-top: 4px;
+  margin-top: 8px;
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--on-surface-variant);
+}
+.nusword-preview-footnote-item {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.nusword-preview-footnote-num {
+  font-weight: 600;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+/* Bilingual block — side-by-side Arabic + translation */
+.nusword-prose .nusword-bilingual-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 1em 0;
+  padding: 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  background: var(--surface-container-lowest);
+}
+.nusword-prose .nusword-bilingual-arabic {
+  font-family: var(--font-amiri), serif;
+  font-size: 1.2em;
+  line-height: 2.0;
+  direction: rtl;
+  text-align: right;
+}
+.nusword-prose .nusword-bilingual-translation {
+  font-family: var(--font-source-serif-4), serif;
+  font-size: 1em;
+  line-height: 1.6;
+  direction: ltr;
+  text-align: left;
+}
+
+/* Stacked bilingual layout */
+.nusword-prose .nusword-bilingual-block[data-layout="stacked"] {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.nusword-prose .nusword-bilingual-block[data-layout="stacked"] .nusword-bilingual-arabic {
+  border-bottom: 1px solid var(--outline-variant);
+  padding-bottom: 8px;
+}
+
+/* Ornaments — decorative dividers */
+.nusword-prose .nusword-ornament {
+  text-align: center;
+  margin: 1.5em 0;
+  padding: 8px 0;
+  user-select: none;
+}
+.nusword-prose .nusword-ornament-symbol {
+  font-family: var(--font-amiri), serif;
+  font-size: 1.5em;
+  color: var(--primary);
+  letter-spacing: 0.2em;
+}
+.nusword-prose .nusword-ornament-diamond .nusword-ornament-symbol {
+  font-size: 1.2em;
+  letter-spacing: 0.5em;
+}
+.nusword-prose .nusword-ornament-star .nusword-ornament-symbol {
+  font-size: 1.3em;
+  letter-spacing: 0.4em;
+}
+.nusword-prose .nusword-ornament-arabesque {
+  padding: 16px 0;
+  border-top: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.nusword-prose .nusword-ornament-arabesque .nusword-ornament-symbol {
+  font-size: 2em;
+  color: var(--primary);
+}
+.nusword-prose .nusword-ornament-line-double .nusword-ornament-symbol {
+  font-family: monospace;
+  font-size: 1em;
+  color: var(--outline);
+  letter-spacing: 0;
+}
+.nusword-prose .nusword-ornament-line-ornate .nusword-ornament-symbol {
+  font-family: monospace;
+  font-size: 1em;
+  color: var(--primary);
+  letter-spacing: 0;
+}
+
+/* Basmala — special decorative block */
+.nusword-prose .nusword-basmala {
+  text-align: center;
+  margin: 1.5em 0;
+  padding: 16px;
+  font-family: var(--font-amiri), serif;
+  font-size: 1.8em;
+  color: var(--primary);
+  direction: rtl;
+  line-height: 1.6;
+}
+
+/* Traditional kitab header (decorative border) */
+.nusword-traditional-header {
+  text-align: center;
+  padding: 8px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  background: var(--primary-fixed);
+  color: var(--on-primary-fixed);
+  font-family: var(--font-amiri), serif;
+  font-size: 1.1em;
+  direction: rtl;
+}
+
+/* RTL toolbar adjustments */
+.nusword-prose[dir="rtl"] .nusword-bilingual-block {
+  direction: rtl;
+}
+.nusword-prose[dir="rtl"] ul,
+.nusword-prose[dir="rtl"] ol {
+  padding-left: 0;
+  padding-right: 1.5em;
+}
