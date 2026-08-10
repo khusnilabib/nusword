@@ -1,0 +1,21 @@
+{
+  "name": "nusword-backend",
+  "version": "1.0.0",
+  "description": "NUSWORD Encore.dev backend — document publishing platform",
+  "private": true,
+  "scripts": {
+    "dev": "encore run",
+    "build": "encore build",
+    "deploy": "encore deploy"
+  },
+  "dependencies": {
+    "encore.dev": "^1.42.0",
+    "bcrypt": "^5.1.1",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,200 @@
+   350→- Inspected the existing `dashboard-view.tsx`, `export-dialog.tsx`, `book-view.tsx`, `icon.tsx`, `use-saas.ts`, `types/saas.ts`, `app/api/organizations/**` route handlers, shadcn `dialog`/`select`/`input`/`button`/`badge`/`avatar` primitives, `lib/utils.ts` (`cn`), `lib/nusword/time.ts` (`relativeTime`), `globals.css` design-token block, and `tailwind.config.ts` to mirror the project's hybrid pattern: raw HTML elements styled with NUSWORD tokens for buttons/inputs (matching `dashboard-view` + `export-dialog`) + shadcn `Dialog` for modal overlays + shadcn `Select` for role dropdowns (keyboard-a11y + dropdown positioning).
+   351→- Found the `useInviteMember` hook's `InviteMemberInput` was missing the optional `name` field that the task spec + the underlying API (`POST /api/organizations/[id]/members` accepts `{email, name?, role}`) both support. Extended the interface in `src/hooks/use-saas.ts` from `{email, role}` → `{email, name?, role}` so the new UI's name field can flow through. One-line interface change, no behavioural change for existing callers.
+   352→- Confirmed role constraints from the API:
+   353→  - Invite-role Zod enum: `["admin", "editor", "commenter", "viewer"]` (owner excluded — owners are auto-assigned at org creation only).
+   354→  - Update-role Zod enum: `["owner", "admin", "editor", "commenter", "viewer"]` (all 5).
+   355→  - Cannot demote self from owner (400), cannot remove owner (400).
+   356→  - Both invite/update/remove require `org.members.manage` permission (owner or admin only).
+   357→  Built the UI to enforce these client-side: `INVITE_ROLES` excludes owner, `ALL_ROLES` includes all 5 for the change-role dropdown, the owner row is immutable (no dropdown, no remove button), and non-admin/owner viewers see a "Only owners and admins can invite members" hint plus disabled inputs.
+   358→
+   359→Files created:
+   360→
+   361→1. `/home/z/my-project/src/components/nusword/organizations-view.tsx` (~880 lines, named export `OrganizationsView`)
+   362→   - **Root view**: header (`Organizations` title + `Create Organization` button) → responsive card grid (`grid-cols-1 md:grid-cols-2 xl:grid-cols-3`) → loading skeletons (3 cards) → empty state → error state. Manages two dialog states: `createOpen` (boolean) and `managedOrgId` (string | null).
+   363→   - **OrganizationCard**: avatar (org-role icon in `bg-primary-container`), name + slug (mono), description (2-line clamp), 3-stat grid (`StatChip` for members/documents/books with icons + counts + uppercase labels), `RoleBadge` (current user's role using `ROLE_META` icon + label + color), `Manage` button (opens members dialog), delete icon button (only if `myRole === "owner"`) → expands an inline confirm panel (`Delete <name>? This cannot be undone.` + Cancel/Delete buttons). Delete mutation wired to `useDeleteOrganization` with success/error toasts.
+   364→   - **CreateOrganizationDialog** (shadcn `Dialog`): header (`Create Organization` + description), form with name input (required, autofocus, maxLength 100) + description textarea (optional, maxLength 500, resizable false), footer Cancel/Create buttons. Form state resets on close (150ms deferred to let the exit animation play). Create mutation wired to `useCreateOrganization` with success/error toasts; dialog closes on success.
+   365→   - **ManageMembersDialog** (shadcn `Dialog`, max-w-2xl): header (org name + group icon + description), body has two sections: `InviteMemberForm` + members list. Uses `useOrgMembers(open ? orgId : null)` so the query only fires when the dialog is open. **Local `stagedOrg` state** keeps the org data mounted during the close transition so Radix's exit animation doesn't render against null props (parent clears `managedOrgId` immediately on `onOpenChange(false)`).
+   366→   - **InviteMemberForm**: bordered panel with `person_add` icon + uppercase label, email input (email-regex validated) + name input (optional) + role `Select` (shadcn, options = `INVITE_ROLES` with role icon + label) + Send Invite button. Disabled when `!canManage` (non-admin/owner) — shows a lock-icon hint in that case. Invite mutation wired to `useInviteMember` with success toast (`Invited <email> as <Role>`) and form reset.
+   367→   - **MemberRow**: avatar (initial in `bg-primary-container`, owner uses `bg-primary` for emphasis) + name/email + role control + remove. Role control is a `Select` (with role-icon prefix on the trigger) if `canManage && !isOwner`, otherwise a static `RoleBadge`. Remove button → click reveals confirm (✓) + cancel (✗) inline pair → confirm fires `useRemoveMember` with success/error toasts. Owner row has no role dropdown and no remove button (immutable).
+   368→   - **RoleBadge**: small inline-flex badge using `ROLE_META[role]` (icon + label) with `bg-surface-container-low` and the role's color class.
+   369→   - **Skeletons**: `OrganizationCardSkeleton` shows 3 placeholder cards during `useOrganizations` loading.
+   370→
+   371→2. `/home/z/my-project/src/components/nusword/usage-card.tsx` (~250 lines, named + default export `UsageCard`)
+   372→   - Compact card (`max-w-md` friendly — designed for dashboard sidebar or below the greeting). Header: `insights` icon + `Usage` heading + `Last 7 days` uppercase sub-label.
+   373→   - **2×2 stat grid** (`StatTile` each): icon + uppercase label + count. Stats: Documents (`description`), Books (`menu_book`), Exports (`file_export`), Templates (`dashboard_customize`). Counts from `useUsageStats()` keyed by `documentsCreated` / `booksCreated` / `exportsRun` / `templatesUsed`.
+   374→   - **Recent Activity list**: top 5 events from `recentEvents`, each rendered as a row with a small circular icon tile + label + relative time (and a `N× ·` prefix when count > 1). Event-type → label/icon mapping defined as `EVENT_META` (`organization.create` → "Created organization", `organization.member.invite` → "Invited member", `document.share` → "Shared document", `template.create` → "Created template", `template.use` → "Used template"); unknown types fall back to a generic `history` icon + "Activity" label.
+   375→   - **States**: loading skeleton (4 stat tiles + 3 activity rows shimmer), error state (red icon + "Couldn't load usage stats."), empty activity state (dashed-border muted "No activity yet.").
+   376→   - Uses `relativeTime` from `@/lib/nusword/time` for Indonesian-locale relative timestamps (e.g. "3 menit yang lalu").
+   377→
+   378→Verification:
+   379→- `npx tsc --noEmit` project-wide: zero errors in the new files (`organizations-view.tsx`, `usage-card.tsx`) or the modified `use-saas.ts`. Pre-existing errors in `book-view.tsx`/`editor-view.tsx`/`export-dialog.tsx`/`serialize.ts`/etc. (all from earlier phases, mostly the `JSONContent` re-export issue + `PDFKit` namespace + skills/examples dirs) are unchanged and out of scope.
+   380→- `npx eslint src/components/nusword/organizations-view.tsx src/components/nusword/usage-card.tsx src/hooks/use-saas.ts` → exit 0, no warnings or errors.
+   381→- Browser smoke test via agent-browser (created a temporary `/test/ui-2` route that mounted both components, then removed it):
+   382→  - Page loaded with HTTP 200; no console errors; React DevTools + HMR connected cleanly.
+   383→  - SSR rendered the loading skeletons correctly (TanStack Query fires client-side post-hydration).
+   384→  - **UsageCard** rendered after hydration with real stats: 12 documents, 1 book, 8 exports, 2 templates, "RECENT ACTIVITY" heading + event list.
+   385→  - **Organizations list** rendered both orgs ("Smoke Test Org" + "Browser Test Org") with name, slug (mono), Owner role badge, member/doc/book stat chips, relative-time footer, Manage + Delete buttons.
+   386→  - **Create Organization dialog**: filled name "Browser Test Org" + description → clicked Create → toast `Organization "Browser Test Org" created` → dialog closed → new org card appeared in the grid (TanStack Query invalidation + refetch worked).
+   387→  - **Manage Members dialog**: opened for "Smoke Test Org" → showed 3 members (You/owner, Alice/editor, bob/commenter) → owner row had no role dropdown or remove button (immutable) → Alice + bob had role `Select` dropdowns + remove buttons.
+   388→  - **Invite flow**: filled email "carol@example.com" + name "Carol" → kept role as Editor → clicked Send Invite → toast `Invited carol@example.com as Editor` → Carol's row appeared at the bottom of the members list with Editor role + remove button → form reset.
+   389→  - **Role change**: opened Carol's role `Select` → saw all 5 options (Owner, Admin, Editor [selected], Commenter, Viewer) → picked Commenter → toast `carol@example.com is now Commenter` → Carol's role display updated to Commenter.
+   390→  - **Remove flow**: clicked Carol's remove icon → inline "Confirm remove" (✓) + "Cancel remove" (✗) buttons appeared → clicked confirm → toast `carol@example.com removed` → Carol's row disappeared, members count went 4→3.
+   391→  - **Delete org flow**: closed dialog → clicked Browser Test Org's delete icon → inline confirm panel ("Delete Browser Test Org? This cannot be undone." + Cancel/Delete buttons) → clicked Delete → org card disappeared from the grid (org deleted, list refetched).
+   392→  - All interactions had zero console errors and zero unhandled promise rejections.
+   393→- Cleaned up: deleted the temporary `/test/ui-2` route, deleted the smoke-test org via `DELETE /api/organizations/[id]`, stopped the dev server.
+   394→
+   395→Stage Summary:
+   396→- Two new NUSWORD design-system components ready to wire into the dashboard: `OrganizationsView` (full-page org + member management with create/delete/invite/role-change/remove flows) and `UsageCard` (compact 4-stat + recent-activity card for the dashboard sidebar or greeting area).
+   397→- One small hook extension: `InviteMemberInput` now accepts an optional `name` field (matching the API + task spec).
+   398→- All seven Phase 7 SaaS hooks created by task 7-HOOKS are now consumed by real UI: `useOrganizations` / `useCreateOrganization` / `useDeleteOrganization` / `useOrgMembers` / `useInviteMember` / `useUpdateMember` / `useRemoveMember` / `useUsageStats`.
+   399→- Design-system fidelity verified: Material Symbols icons throughout, `bg-surface`/`bg-surface-container-low`/`bg-primary-container` tonal tiers, `border-outline-variant` hairlines, `text-label-ui-sm` uppercase tracking-wider section labels, `text-headline-ui-md` card/dialog titles, `text-headline-ui-lg` page title, `rounded-lg` cards + `rounded` buttons, `ROLE_META` icons + colors for every role display.
+   400→- Next actions for downstream agents: (a) add an "Organizations" entry to the dashboard sidebar nav (`PRIMARY_NAV` in `dashboard-view.tsx`) and swap the main content to `<OrganizationsView />` when that nav item is active (the store would need a new view mode or a sub-route under dashboard); (b) drop `<UsageCard />` into the dashboard layout — natural spots are above the document grid (replacing or alongside the welcome block) or in a right sidebar; (c) once the SaaS API grows real auth, replace the `CURRENT_USER_EMAIL = "user@nusword.local"` placeholder in the API routes (the UI already keys everything off `myRole` from the org DTO, so it's auth-ready); (d) build the share dialog (`useDocumentShares` / `useShareDocument` / `useUpdateShare` / `useRevokeShare`) and templates gallery (`useTemplates` / `useTemplate` / `useCreateTemplate` / `useUpdateTemplate` / `useDeleteTemplate` / `useUseTemplate`) — the hooks + API are all in place, just need their UIs.
+   401→
+   402→---
+   403→Task ID: 7 (completion)
+   404→Agent: main
+   405→Task: Implement Phase 7 (SaaS) — organizations, sharing, roles, usage metering, templates marketplace. WITHOUT billing (user growth focus).
+   406→
+   407→Work Log:
+   408→- Added 5 new Prisma models: Organization (name, slug, description, soft-delete), OrganizationMember (orgId, email, name, role), SharedDocument (documentId, sharedWithEmail, role, shareToken), Template (title, description, type, category, content, settings, published, useCount), UsageEvent (email, type, resourceId, metadata). Added organizationId to Document + Book (nullable, SetNull on delete). Ran `db:push`.
+   409→- Wrote `src/types/saas.ts` — OrgRole (owner/admin/editor/commenter/viewer), ShareRole (editor/commenter/viewer), Permission system with ROLE_PERMISSIONS + SHARE_ROLE_PERMISSIONS maps + hasPermission() checker, ROLE_META + SHARE_ROLE_META for UI display, NuswordOrganization/OrgMember/Share/Template DTOs, TEMPLATE_CATEGORIES (5 categories: academic/business/creative/religious/personal), UsageStats type.
+   410→- Built API routes via subagents:
+   411→  - Organizations: GET/POST /api/organizations, GET/PATCH/DELETE /api/organizations/[id], GET/POST /api/organizations/[id]/members, PATCH/DELETE /api/organizations/[id]/members/[memberId]
+   412→  - Sharing: GET/POST /api/documents/[id]/shares, PATCH/DELETE /api/documents/[id]/shares/[shareId], GET /api/shared
+   413→  - Templates: GET/POST /api/templates, GET/PATCH/DELETE /api/templates/[id], POST /api/templates/[id]/use (creates document from template, increments useCount)
+   414→  - Usage: GET /api/usage (documents/books/exports/templates counts + recent events grouped by day)
+   415→  - All routes use Zod validation, CURRENT_USER_EMAIL placeholder (no auth yet), permission checks via hasPermission(), usage event logging.
+   416→- Built TanStack Query hooks in `src/hooks/use-saas.ts` (21 hooks): useOrganizations, useOrganization, useCreateOrganization, useUpdateOrganization, useDeleteOrganization, useOrgMembers, useInviteMember, useUpdateMember, useRemoveMember, useDocumentShares, useShareDocument, useUpdateShare, useRevokeShare, useSharedWithMe, useTemplates, useTemplate, useCreateTemplate, useUpdateTemplate, useDeleteTemplate, useUseTemplate, useUsageStats.
+   417→- Built UI components via subagents:
+   418→  - `share-dialog.tsx` — share document dialog: email input + role selector (editor/commenter/viewer with icons + descriptions) + share button + current shares list with revoke.
+   419→  - `templates-gallery.tsx` — templates marketplace: category filter tabs (All/Academic/Business/Creative/Religious/Personal) + template cards grid + "Use Template" button + "Create Template" dialog.
+   420→  - `organizations-view.tsx` — full org management: org cards with role badges, create org dialog, members management panel (invite/change-role/remove), permission gating.
+   421→  - `usage-card.tsx` — compact dashboard card: 4 stat tiles (documents/books/exports/templates) + recent activity list.
+   422→- Wired into existing UI:
+   423→  - Dashboard sidebar: replaced "Projects" with "Shared with me" + "Organizations" nav items.
+   424→  - Dashboard main: conditionally renders OrganizationsView, TemplatesGallery, or Recent (documents + books + usage card) based on activeNav.
+   425→  - Editor top nav: Share button now opens ShareDialog (wired with documentId + documentTitle).
+   426→- Bug fixes: Fixed Prisma client cache issue (needed `npx prisma generate` after schema push). Fixed race condition in kitab toggle (from Phase 6). Fixed role dropdown covering Send Invite button (press Escape to close).
+   427→
+   428→Stage Summary:
+   429→- Phase 7 complete: SaaS collaboration features (organizations, roles, sharing, templates marketplace, usage metering) WITHOUT billing. The focus is user growth and collaboration.
+   430→- Architecture: Organization owns documents/books/templates. Members have roles (owner/admin/editor/commenter/viewer) with permission checks. Sharing is separate from ownership (share a document with an individual by email). Templates are publishable to the marketplace with use-count tracking. Usage events logged for analytics.
+   431→- RBAC: 5 org roles with 10 permissions (org.delete, org.members.manage, org.settings.edit, content.create/edit/delete/export/share/comment/view). Share roles subset (editor/commenter/viewer).
+   432→- Verified via Agent Browser: dashboard sidebar shows all 4 nav items → Organizations view (create org, manage members, invite collaborator) → Templates gallery (category tabs, template cards) → Share dialog (email + role selector) → Usage card (stats + recent activity).
+   433→- No billing: per user request, Phase 7 focuses on MVP production and user growth. Billing can be added later (PRD §7: "billing-ready structure").
+   434→- Next phase: Phase 8 = AI (prompt-to-outline, rewrite, summarize, structured generation).
+   435→
+   436→---
+   437→Task ID: 8
+   438→Agent: main
+   439→Task: Create minimalist landing page (paper/writing theme) + login + signup pages. Architecturally separate marketing site from editor app at /app.
+   440→
+   441→Work Log:
+   442→- Moved the existing NUSWORD editor app from `/` to `/app` route (`src/app/app/page.tsx`). This is the client-side application with Zustand store, dashboard, editor, and book views.
+   443→- Created new landing page at `/` (`src/app/page.tsx`) — a server component (no client-side app dependencies, no Zustand store, no editor imports). Marketing/public website.
+   444→- Landing page theme: "kertas tulisan biasa" (ordinary writing paper) — minimalist aesthetic with:
+   445→  - Subtle ruled-line background pattern (like notebook paper)
+   446→  - Red margin line on the left (like notebook paper)
+   447→  - Source Serif 4 for headings and body text (paper-like)
+   448→  - Hanken Grotesk for UI elements (nav, buttons, labels)
+   449→  - Deep teal primary color for CTAs
+   450→  - Generous whitespace
+   451→- Landing page sections: Hero (brand + headline "Write. Design. Publish. Print." + subtitle + CTAs), Features (6 feature cards with icons), Phases (8-phase roadmap timeline), CTA ("Mulai menulis hari ini" with signup + demo buttons), Footer.
+   452→- Created `src/components/landing/landing-nav.tsx` — sticky transparent nav with brand, links (Fitur, Roadmap, Masuk, Daftar).
+   453→- Created `src/components/landing/landing-footer.tsx` — minimalist footer with brand, links, copyright.
+   454→- Created login page at `/login` (`src/app/login/page.tsx`) — simple paper-themed form: email + password inputs with bottom-border style (like writing on a line), "Masuk" button, "Coba Demo Tanpa Akun" link, signup link. On submit → redirect to /app.
+   455→- Created signup page at `/signup` (`src/app/signup/page.tsx`) — simple paper-themed form: name + email + password inputs, "Buat Akun" button, terms text, demo link, login link. On submit → redirect to /app.
+   456→- Updated layout metadata to Indonesian description.
+   457→- Architecture: Landing page (`/`) is a server component with NO imports from the app (no Zustand store, no editor, no dashboard, no hooks). The app (`/app`) is a client component with full app dependencies. Login/signup are client components (for form state + router redirect) but don't import app components. This cleanly separates marketing from application code.
+   458→
+   459→Stage Summary:
+   460→- Marketing site at `/` — minimalist landing page with paper/writing theme, architecturally separate from the editor app.
+   461→- Auth pages at `/login` and `/signup` — simple paper-themed forms that redirect to `/app` on submit (Phase 7: no real auth yet, placeholder).
+   462→- Editor app at `/app` — the full NUSWORD application (dashboard, editor, book view, organizations, templates, etc.).
+   463→- All navigation flows verified: landing → signup → /app, landing → login → /app, landing → Coba Demo → /app, login ↔ signup cross-links.
+   464→
+   465→---
+   466→Task ID: 9-API-AUTH
+   467→Agent: general-purpose (sub agent)
+   468→Task: Update ALL API route files to replace the hardcoded `CURRENT_USER_EMAIL = "user@nusword.local"` placeholder with real Supabase auth via `getAuthEmailOrFallback()` from `@/lib/supabase/server`.
+   469→
+   470→Work Log:
+   471→- Read `/home/z/my-project/worklog.md` for context — Phase 9 (production scale + Supabase migration). The Supabase server client was already created at `src/lib/supabase/server.ts` exporting `getAuthEmailOrFallback()` (returns authenticated user's email, falls back to `DEV_FALLBACK_EMAIL = "user@nusword.local"` in dev when Supabase isn't configured, returns `null` if configured-but-unauthenticated) and `isSupabaseConfigured()`.
+   472→- Inspected all 11 listed API route files. Noted two of them (`documents/[id]/shares/[shareId]/route.ts` and `templates/[id]/route.ts`) actually did NOT have `CURRENT_USER_EMAIL` declared — but per task spec they're still in scope and got the auth check + import added so the routes are protected (they previously had no auth gating at all).
+   473→- For each file applied the prescribed transformation:
+   474→  1. Removed `const CURRENT_USER_EMAIL = "user@nusword.local";`.
+   475→  2. Added `import { getAuthEmailOrFallback } from "@/lib/supabase/server";` to the existing import block (kept import order: `next/server` → `@/lib/db` → `@/lib/supabase/server` → `@/types/saas` / `@/lib/nusword/serialize` → `zod`).
+   476→  3. Added at the very top of every handler (GET/POST/PATCH/DELETE):
+   477→     ```ts
+   478→     const userEmail = await getAuthEmailOrFallback();
+   479→     if (!userEmail) {
+   480→       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+   481→     }
+   482→     ```
+   483→  4. Replaced all remaining `CURRENT_USER_EMAIL` references with `userEmail`.
+   484→- Special handling for helper functions:
+   485→  - `src/app/api/organizations/[id]/route.ts` had `getMemberRole(orgId)` which used `CURRENT_USER_EMAIL`. Changed signature to `getMemberRole(orgId, userEmail)` and updated all 3 call sites (GET / PATCH / DELETE) to pass the local `userEmail`.
+   486→  - All other helpers in the affected files (e.g. `slugify`, `toShareDto`, `toTemplateDto`, `parseJson`, `toDayKey`) were pure and didn't reference `CURRENT_USER_EMAIL` — left untouched.
+   487→- Files updated (11):
+   488→  1. `src/app/api/organizations/route.ts` — GET + POST (4 email usages: GET membership query, POST member-create, POST usage-event).
+   489→  2. `src/app/api/organizations/[id]/route.ts` — GET + PATCH + DELETE + `getMemberRole(orgId, userEmail)` helper.
+   490→  3. `src/app/api/organizations/[id]/members/route.ts` — GET + POST (3 email usages: GET membership check, POST membership check, POST usage-event).
+   491→  4. `src/app/api/organizations/[id]/members/[memberId]/route.ts` — PATCH + DELETE (2 membership checks + 1 self-demote-guard comparison).
+   492→  5. `src/app/api/documents/[id]/shares/route.ts` — GET + POST (POST had 2 email usages: self-share guard + usage-event).
+   493→  6. `src/app/api/documents/[id]/shares/[shareId]/route.ts` — PATCH + DELETE (no `CURRENT_USER_EMAIL` existed; auth check + import added so the route is now protected).
+   494→  7. `src/app/api/shared/route.ts` — GET (1 usage: `sharedWithEmail` filter).
+   495→  8. `src/app/api/templates/route.ts` — GET + POST (POST had 1 usage: usage-event).
+   496→  9. `src/app/api/templates/[id]/route.ts` — GET + PATCH + DELETE (no `CURRENT_USER_EMAIL` existed; auth check + import added).
+   497→  10. `src/app/api/templates/[id]/use/route.ts` — POST (1 usage: usage-event).
+   498→  11. `src/app/api/usage/route.ts` — GET (2 usages: `usageEvent.count` template-use filter + `usageEvent.findMany` recent-events filter).
+   499→
+   500→Verification:
+   501→- `rg CURRENT_USER_EMAIL src/app/api` → no matches (the placeholder is gone from every API route file).
+   502→- `rg CURRENT_USER_EMAIL src` → only remaining match is a docstring in `src/lib/supabase/server.ts` line 43 ("Used by API routes to replace the placeholder CURRENT_USER_EMAIL.") — a documentation comment, expected and accurate.
+   503→- `bun run lint` → exit 0 with only 1 pre-existing warning (`@next/next/no-page-custom-font` in `src/app/layout.tsx`, unrelated to this task).
+   504→- `bunx tsc --noEmit` filtered to `src/app/api` → no errors in any of the 11 modified route files. (Pre-existing TS errors in `src/lib/supabase/server.ts` lines 23 + 28 remain — `cookies()` returns a Promise in Next.js 15+ that needs awaiting; out of scope for 9-API-AUTH, belongs to whoever owns `src/lib/supabase/server.ts`.)
+   505→- All Zod schemas, error-response shapes (`{ error: ... }` + status codes 400/403/404/409), `hasPermission()` RBAC checks, Prisma queries, usage-event logging, and DTO shapes (`toShareDto`, `toTemplateDto`, `toDocumentDto`, `toDayKey`) left byte-for-byte identical — only the email source was swapped.
+   506→
+   507→Stage Summary:
+   508→- All 11 Phase 7 SaaS API routes now resolve the current user via Supabase auth (`getAuthEmailOrFallback`) instead of the hardcoded `"user@nusword.local"` placeholder. Each handler returns 401 `{ error: "Unauthorized" }` if Supabase is configured but the request has no valid session; in dev (no Supabase env vars) it transparently falls back to the dev email so local development continues to work without changes.
+   509→- RBAC preserved end-to-end: org-role checks (owner/admin/editor/commenter/viewer via `hasPermission`), share-role validation, "cannot demote self from owner", "cannot remove owner", "cannot share with yourself", slug-uniqueness, soft-delete filtering — all unchanged.
+   510→- The downstream UI (organizations-view, share-dialog, templates-gallery, usage-card, dashboard sidebar) needs NO changes — every component already keys off the API's `myRole` field returned in the org DTO, so swapping the email source on the server is transparent to the client.
+   511→- Next actions for downstream agents: (a) fix `cookies()` Promise-await issue in `src/lib/supabase/server.ts` (Next.js 15+ requires `const cookieStore = await cookies();`) — this is the only thing standing between the API routes and real end-to-end Supabase session resolution; (b) add a Supabase auth middleware (`src/middleware.ts`) to refresh session cookies on every request and redirect unauthenticated users from `/app/*` to `/login`; (c) wire the existing `/login` and `/signup` pages to `supabase.auth.signInWithPassword` / `signUp` (currently they just `router.push('/app')`); (d) once auth is live, the dev fallback in `getAuthEmailOrFallback` can be removed or kept behind an explicit `NODE_ENV === "development"` guard.
+   512→
+   513→---
+   514→Task ID: 9
+   515→Agent: main
+   516→Task: Implement Phase 9 (Production Scale) — Supabase Auth migration, production-ready setup. Starting from Auth.
+   517→
+   518→Work Log:
+   519→- Installed @supabase/supabase-js + @supabase/ssr packages.
+   520→- Created `src/lib/supabase/client.ts` — browser client using createBrowserClient. Returns null if env vars not set (dev mode).
+   521→- Created `src/lib/supabase/server.ts` — server client with createClient() (sync, for middleware) + createClientAsync() (async, for API routes — Next.js 15+ cookies() is async). Exports: getAuthEmail(), getAuthUserId(), getAuthEmailOrFallback() (returns dev fallback "user@nusword.local" if Supabase not configured), isSupabaseConfigured().
+   522→- Created `src/middleware.ts` — refreshes Supabase auth session on every request. Protects /app routes (redirects to /login?redirect=/app if not authenticated). Redirects logged-in users away from /login and /signup to /app. Skips all checks if Supabase not configured (dev mode).
+   523→- Created `src/components/providers/auth-provider.tsx` — AuthProvider wrapping the app with Supabase auth state. useAuth() hook provides: user, loading, isDevMode, signIn(email, password), signUp(email, password, name), signOut(). In dev mode (no Supabase), uses a DEV_USER fallback so the app works without auth.
+   524→- Updated `src/app/layout.tsx` — wrapped children with AuthProvider (inside QueryProvider).
+   525→- Updated `src/app/login/page.tsx` — uses useAuth().signIn() instead of placeholder setTimeout. Shows "Mode Pengembangan" banner when Supabase not configured. Reads ?redirect= query param for post-login redirect. Calls router.refresh() after login to refresh server data.
+   526→- Updated `src/app/signup/page.tsx` — uses useAuth().signUp() with name metadata. Shows dev mode banner. Different success message for dev vs production (production mentions email verification).
+   527→- Updated ALL 11 API route files (via subagent) — replaced hardcoded `CURRENT_USER_EMAIL = "user@nusword.local"` with `getAuthEmailOrFallback()` from the Supabase server client. Each handler now checks `if (!userEmail) return 401 Unauthorized`. Helper functions like getMemberRole now accept userEmail as a parameter. Files updated: organizations (route + [id] + members + [memberId]), documents/[id]/shares (route + [shareId]), shared, templates (route + [id] + [id]/use), usage.
+   528→- Added sign-out button to dashboard top nav — uses useAuth().signOut(), shows toast, redirects to /login. Shows user email in title tooltip.
+   529→- Updated Prisma schema datasource with comments: currently "sqlite" for local dev, documented that production should change to "postgresql" and set DATABASE_URL to Supabase connection string.
+   530→- Created `.env.example` with all required env vars: DATABASE_URL (SQLite + Supabase examples), NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY. Documented the dev mode behavior and production setup steps.
+   531→
+   532→Architecture:
+   533→- Dev mode (no Supabase env vars): auth auto-passes, placeholder user "user@nusword.local" used, middleware skips protection, all API routes use fallback email. App works exactly as before.
+   534→- Production mode (Supabase env vars set): real Supabase Auth with email/password, middleware protects /app routes, API routes use real authenticated user email, session refreshed on every request.
+   535→
+   536→Production setup steps (for when Supabase credentials are available):
+   537→1. Create a project at https://supabase.com
+   538→2. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env
+   539→3. Change Prisma provider from "sqlite" to "postgresql"
+   540→4. Set DATABASE_URL to Supabase PostgreSQL connection string
+   541→5. Run `bun run db:push` to create tables in Supabase
+   542→6. Restart the dev server
+   543→
+   544→Stage Summary:
+   545→- Phase 9 Auth migration complete: Supabase Auth integrated with graceful dev mode fallback. All API routes use real authenticated user email. Middleware protects /app routes. Login/signup pages use Supabase Auth. Sign-out button in dashboard.
+   546→- Database: Prisma schema prepared for PostgreSQL migration (just change provider + DATABASE_URL). All models are PostgreSQL-compatible.
+   547→- Production-ready: graceful fallback for dev, real auth for production, session refresh middleware, protected routes, env-based configuration.
+   548→- Verified: landing → login (dev mode banner) → submit → /app → sign out → /login. Signup → /app. API routes work with fallback email in dev mode.
+   549→

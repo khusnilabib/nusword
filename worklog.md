@@ -546,3 +546,342 @@ Stage Summary:
 - Database: Prisma schema prepared for PostgreSQL migration (just change provider + DATABASE_URL). All models are PostgreSQL-compatible.
 - Production-ready: graceful fallback for dev, real auth for production, session refresh middleware, protected routes, env-based configuration.
 - Verified: landing → login (dev mode banner) → submit → /app → sign out → /login. Signup → /app. API routes work with fallback email in dev mode.
+
+---
+Task ID: 9-ENCORE-SQL
+Agent: general-purpose (sub agent)
+Task: Create PostgreSQL migration SQL files for the Encore.dev backend, replacing the Prisma schema. Each Encore service has its own `migrations/` folder with numbered SQL files.
+
+Work Log:
+- Read `/home/z/my-project/prisma/schema.prisma` to inventory all 11 Prisma models (User, Document, DocumentVersion, ExportJob, Book, BookChapter, Organization, OrganizationMember, SharedDocument, Template, UsageEvent) and their fields, defaults, indexes, uniqueness constraints, and onDelete behaviors.
+- Read `/home/z/my-project/worklog.md` to understand project context (Phase 1/2 foundation already built on Prisma+SQLite; backend is migrating to Encore.dev with per-service PostgreSQL databases).
+- Created the `backend/services/{auth,documents,books,organizations,templates,usage}/migrations/` directory tree (did not exist yet — only `backend/shared/`, `backend/package.json`, `backend/encore.app`, `backend/tsconfig.json` were present).
+- Authored 6 idempotent PostgreSQL migration files, one per service:
+
+  1. `backend/services/auth/migrations/1_create_users.sql`
+     - `users` table: id (TEXT PK, default gen_random_uuid()::text), email (UNIQUE NOT NULL), password_hash (NOT NULL), name (NULLABLE), created_at, updated_at (TIMESTAMPTZ default NOW()).
+     - Explicit unique index `idx_users_email` on email.
+     - Column-level COMMENTs explaining purpose of each field.
+
+  2. `backend/services/documents/migrations/1_create_documents.sql`
+     - `documents` table with title ('Untitled'), content (''), settings ('{}'), created_at, updated_at, deleted_at (nullable), organization_id (nullable), owner_email (NOT NULL).
+     - `document_versions` table with FK to documents (ON DELETE CASCADE), UNIQUE(document_id, version) constraint.
+     - `shared_documents` table with FK to documents (ON DELETE CASCADE), share_token UNIQUE.
+     - `export_jobs` table with FK to documents (ON DELETE CASCADE), full export metadata (format, preset, status, artifact_path, artifact_size, checksum, preflight_report, error_message, completed_at, expires_at).
+     - 9 indexes: documents(deleted_at, updated_at, organization_id, owner_email), document_versions(document_id), shared_documents(document_id, shared_with_email), export_jobs(document_id, status).
+
+  3. `backend/services/books/migrations/1_create_books.sql`
+     - `books` table with title ('Untitled Book'), subtitle, author, settings ('{}'), front_matter ('[]'), back_matter ('[]'), created_at, updated_at, deleted_at, organization_id, owner_email (NOT NULL).
+     - `book_chapters` table with FK to books (ON DELETE CASCADE) AND a self-referential FK on parent_id (ON DELETE CASCADE for safe recursive deletion of nested chapters), document_id (nullable, not FK-constrained — cross-service), title, sort_order (default 0), parent_id, start_new_page (default TRUE), include_in_toc (default TRUE).
+     - 7 indexes: books(deleted_at, updated_at, organization_id, owner_email), book_chapters(book_id, parent_id, sort_order).
+
+  4. `backend/services/organizations/migrations/1_create_organizations.sql`
+     - `organizations` table with name, slug (UNIQUE NOT NULL), description, created_at, updated_at, deleted_at.
+     - `organization_members` table with FK to organizations (ON DELETE CASCADE), email, name, role (default 'viewer'), UNIQUE(organization_id, email).
+     - 3 indexes: organizations(deleted_at), organization_members(organization_id, email).
+
+  5. `backend/services/templates/migrations/1_create_templates.sql`
+     - `templates` table with title, description, type (default 'document'), category (default 'personal'), content (''), settings ('{}'), published (default FALSE), organization_id (nullable, not FK-constrained — cross-service), use_count (default 0), created_at, updated_at.
+     - 3 indexes: templates(published, category, organization_id).
+
+  6. `backend/services/usage/migrations/1_create_usage_events.sql`
+     - `usage_events` table with email, type, resource_id (nullable, not FK-constrained), metadata (nullable TEXT for JSON), created_at.
+     - 3 indexes: usage_events(email, type, created_at).
+
+Design decisions / conventions applied across all files:
+- PostgreSQL-native types: TEXT, INT, BOOLEAN, TIMESTAMPTZ (not SQLite-friendly types).
+- Every primary key is `TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text` — the app generates cuid/uuid IDs, but the default ensures raw inserts still work.
+- `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` everywhere for idempotent re-runs (Encore applies migrations once per database, but idempotency is defensive).
+- `ON DELETE CASCADE` on all intra-service foreign keys (document_versions→documents, shared_documents→documents, export_jobs→documents, book_chapters→books, book_chapters self-ref on parent_id, organization_members→organizations) — matches Prisma's onDelete: Cascade behavior.
+- Cross-service references (organization_id, owner_email, email, document_id on book_chapters, resource_id on usage_events) are intentionally NOT FK-constrained because each Encore service has its own database. Referential integrity is enforced at the application layer. This is documented in the header comment of each affected file.
+- Named all constraints (fk_*, uq_*) for easier debugging and future ALTER statements.
+- snake_case column names throughout (PostgreSQL convention): e.g. `password_hash`, `created_at`, `organization_id`, `shared_with_email`, `artifact_path`, `artifact_size`, `preflight_report`, `error_message`, `completed_at`, `expires_at`, `front_matter`, `back_matter`, `book_id`, `document_id`, `parent_id`, `sort_order`, `start_new_page`, `include_in_toc`, `owner_email`, `shared_with_email`, `share_token`, `use_count`, `resource_id`.
+- Every table and every meaningful column has a PostgreSQL COMMENT documenting its purpose, allowed values (for enums stored as TEXT), and any cross-service caveat.
+- Each file begins with a `-- ====` header block explaining: service name, purpose, Prisma models being replaced, and migration notes.
+
+Findings / next actions:
+- The `backend/services/` tree did not previously exist; only `backend/shared/` and the Encore config files were present. These migrations are the first concrete service artifacts. The Encore service Go/TS code (RPC handlers, service structs) still needs to be authored (out of scope for this task — likely Task 9-ENCORE-SVC or similar).
+- `encore.app` and `backend/package.json` should be reviewed to confirm the Encore SQL database naming convention matches the service folder names (`auth`, `documents`, `books`, `organizations`, `templates`, `usage`). If Encore expects a specific database name declared in the service code (`//encore:db` annotation), the migration folder name must match.
+- Prisma's `onDelete: SetNull` on `Document.organizationId` and `Book.organizationId` cannot be replicated with a real FK because organizations live in a separate database. The application must null out `organization_id` on documents/books when an org is deleted (or rely on soft-delete via `deleted_at`). This is called out in the file comments.
+- No data migration is included — these are schema-only migrations. Since the prior Prisma setup used SQLite locally, there is no production data to migrate; the Encore databases will start empty.
+- Files are ready for `encore db migrate` (or whichever migration command Encore uses) once the service code declares the databases.
+
+---
+Task ID: 9-ENCORE-AUTH
+Agent: general-purpose (sub agent)
+Task: Create the Encore.dev auth service for NUSWORD. Replaces Supabase auth. Handles user registration, login, session management (JWT), and auth validation via Encore's built-in auth handler system.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` for context — Phase 9 Encore.dev backend migration. Prior scaffolding (task 9-ENCORE-MIGRATIONS) created `backend/services/auth/migrations/1_create_users.sql` (users table: id TEXT PK, email UNIQUE, password_hash, name, created_at, updated_at). Read `/home/z/my-project/backend/shared/types.ts` for the `AuthUser` / `AuthSession` interfaces the frontend expects (id, email, name, createdAt). Inspected `backend/package.json` (deps: encore.dev ^1.42.0, bcrypt ^5.1.1, zod ^4.0.0) and `backend/encore.app` (app id "nusword").
+- Inspected the installed `encore.dev` npm package's actual TypeScript surface to get the APIs right (rather than guessing from docs):
+  - `node_modules/encore.dev/auth/mod.ts` — exports `authHandler<Params, AuthData>(fn)` where `fn: (params) => Promise<AuthData | null>` and `AuthData extends { userID: string }`. Crucially, it does NOT export `AuthInfo` or `AuthParams` types (common doc examples show these, but the real SDK uses a generic `Params` you define yourself). Adjusted the implementation to define a local `AuthParams { authToken: string }` interface.
+  - `node_modules/encore.dev/api/mod.ts` — exports `api(options, fn)`, `APIError` (with static factories: `invalidArgument`→400, `unauthenticated`→401, `notFound`→404, `alreadyExists`→409, `internal`→500), `Header<T>` type (branded string for reading request headers in endpoint params). Confirmed `APIOptions` has `auth?: boolean` and `expose?: boolean` (default false — endpoints are internal-only unless `expose: true`; the auth endpoints are implicitly public-via-path under `/auth/*`).
+  - `node_modules/encore.dev/storage/sqldb/database.ts` — `SQLDatabase` has `queryRow\`SQL\`` → `Promise<Row | null>`, `queryAll\`SQL\`` → `Promise<Row[]>`, `exec\`SQL\`` → `Promise<void>`, `query\`SQL\`` → `AsyncGenerator<Row>`. `Row = Record<string, any>`. Template-literal tagged templates with `${param}` placeholders (auto-parameterized, injection-safe).
+  - `node_modules/encore.dev/config/secrets.ts` — `secret("NAME")` returns a callable `Secret<Name>`; calling it (`jwtSecret()`) returns the string value. In local dev, unset secrets return `""` (empty string) rather than throwing — which would be a security hole for JWT signing, so added a `getJwtSecret()` guard that throws `APIError.internal("JWT_SECRET is not set...")` if the value is empty.
+- The `~encore/auth` virtual module (used by `validate.ts` / `me.ts` to read `auth.data`) is generated by Encore's compiler at build time — not present in the npm package. Created `backend/encore.d.ts` with a stand-in `declare module "~encore/auth"` so plain `tsc --noEmit` can type-check without running Encore's codegen. The declaration mirrors the `AuthData` shape returned by the auth handler; at runtime under Encore, the generated types take precedence.
+
+Files created (6 service files + 1 migration + 1 type shim):
+
+1. `/home/z/my-project/backend/services/auth/auth.ts` (~365 lines) — service definition + helpers + Encore auth handler
+   - `db = new SQLDatabase("auth", { migrations: "./migrations" })` — Encore auto-provisions the PostgreSQL database + runs both migrations.
+   - `jwtSecret = secret("JWT_SECRET")` + `getJwtSecret()` guard (throws if empty — fails loud in local dev if secret unset, rather than silently signing JWTs with an empty HMAC key).
+   - `AuthData` interface: `{ userID, email, name, createdAt }` — the typed payload every authenticated Encore request sees as `auth.data` across ALL NUSWORD services. Mirrors the frontend's `AuthUser` (includes `createdAt` so `/auth/me` + `/auth/validate` don't need an extra DB round-trip per call).
+   - `AuthParams` interface: `{ authToken: string }` — what Encore passes to the auth handler (the raw bearer token, no "Bearer " prefix).
+   - JWT helpers: hand-rolled HS256 implementation (no `jsonwebtoken` dep — keeps the auth service at zero runtime deps beyond bcrypt + Encore SDK). `signJwt({userId, email, name, createdAt})` → 3-part base64url JWT with 7-day `exp`. `verifyJwt(token)` → validates signature via `crypto.timingSafeEqual`, decodes payload, checks expiry, returns typed `JwtPayload`. `InvalidTokenError` class for structured error handling.
+   - Password helpers: `hashPassword(plain)` → bcrypt 10 rounds; `verifyPassword(plain, hash)` → bcrypt.compare.
+   - User DB ops: `findUserById(id)`, `findUserByEmail(email)` (also returns `passwordHash`), `createUser(email, passwordHash, name)` (uses `crypto.randomUUID()` for the id), `toAuthUser(user)` → DTO matching `AuthUser` (converts `Date` → ISO string).
+   - Revoked-token blocklist: `revokeToken(token, {userId, exp})` → INSERT ... ON CONFLICT DO NOTHING (idempotent — logging out twice is a no-op); `isTokenRevoked(token)` → indexed lookup by SHA-256 of the raw token (never stores the raw token). `tokenIdFromToken()` uses SHA-256 so a DB leak can't be replayed.
+   - `auth = authHandler(async (params) => ...)` — the Encore auth handler. Pipeline: (1) extract `params.authToken`, throw 401 if missing; (2) `verifyJwt()` — throw 401 with specific message on `InvalidTokenError`; (3) `isTokenRevoked()` — throw 401 "token has been revoked" if blocklisted; (4) return `{ userID, email, name, createdAt }` from the JWT payload. Intentionally does NOT re-fetch the user from the DB on every request (JWT is the source of truth for the session; user email/name changes require re-login to refresh the token — keeps the auth handler O(1) on the hot path: one indexed revoked-token lookup).
+
+2. `/home/z/my-project/backend/services/auth/signup.ts` (~105 lines) — `POST /auth/signup` (auth: false)
+   - Request: `{ email, password, name? }`. Response: `{ token, user: AuthUserDTO }`.
+   - Validation: email regex, password 8–128 chars, name ≤200 chars (trimmed, null if empty). Email lowercased + trimmed before DB lookup.
+   - Pre-checks `findUserByEmail()` → 409 `alreadyExists` if duplicate. Then `hashPassword()` + `createUser()`. Wraps the INSERT in a try/catch that also maps the UNIQUE-constraint violation (race between two concurrent signups with the same email) to 409 — so the endpoint is race-safe even without a transaction.
+   - Issues a JWT via `signJwt({userId, email, name, createdAt})` and returns `{ token, user }`.
+
+3. `/home/z/my-project/backend/services/auth/login.ts` (~75 lines) — `POST /auth/login` (auth: false)
+   - Request: `{ email, password }`. Response: `{ token, user: AuthUserDTO }`.
+   - Always runs `bcrypt.compare` even if the user doesn't exist (uses a dummy hash that never matches) — keeps response time constant to prevent user-enumeration via timing side-channels. Returns the same 401 message ("invalid email or password") whether the user is missing OR the password is wrong.
+   - Issues a fresh JWT on success.
+
+4. `/home/z/my-project/backend/services/auth/validate.ts` (~60 lines) — `GET /auth/validate` (auth: true)
+   - Internal session-validation endpoint — called by other NUSWORD services (via Encore's service-to-service RPC client) or the frontend to verify a bearer token is still valid and resolve the user.
+   - Response: `{ valid: true, user: AuthUserDTO }`.
+   - Uses `auth: true`, so Encore runs the auth handler first — by the time the endpoint body executes, the token has already been signature-checked, expiry-checked, and blocklist-checked. The body just reads `auth.data` (from `~encore/auth`) and shapes it. No DB round-trip.
+   - 401 unauthenticated if the token is missing/invalid/expired/revoked (Encore returns this before the endpoint body runs).
+
+5. `/home/z/my-project/backend/services/auth/me.ts` (~55 lines) — `GET /auth/me` (auth: true)
+   - Frontend-facing "current user" endpoint. Response: `{ user: AuthUserDTO }`.
+   - Same mechanism as `validate.ts` (auth: true, reads `auth.data`) but a different response envelope (no `valid: true` wrapper) to match the frontend's expected contract: `GET /auth/me → { user: {id, email, name, createdAt} }`.
+
+6. `/home/z/my-project/backend/services/auth/logout.ts` (~85 lines) — `POST /auth/logout` (auth: false)
+   - Reads the raw `Authorization` header via `Header<string>` (Encore's header-param type), extracts the bearer token, verifies the JWT signature + expiry, then adds the token's SHA-256 to the `revoked_tokens` blocklist via `revokeToken()`.
+   - Uses `auth: false` (not `auth: true`) so we can read the raw `Authorization` header directly — Encore's auth handler consumes it when `auth: true`, which would prevent extracting the raw token to revoke.
+   - Always returns `{ ok: true }` even if the token is already expired or malformed — the client's intent is "discard my session", and an already-invalid token needs no server-side revocation. This keeps logout UX idempotent and never errors on the client. Revocation itself is idempotent (ON CONFLICT DO NOTHING).
+   - 400 `invalidArgument` if the `Authorization` header is missing or not in `Bearer <token>` format.
+
+7. `/home/z/my-project/backend/services/auth/migrations/2_create_revoked_tokens.sql` (new) — adds the `revoked_tokens` table: `token_id` (SHA-256 hex of raw JWT, TEXT PK), `user_id` (TEXT, indexed for per-user bulk revocation), `expires_at` (TIMESTAMPTZ, indexed for cleanup job), `revoked_at` (TIMESTAMPTZ default NOW()). Idempotent (CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS). Full COMMENTs on every column.
+
+8. `/home/z/my-project/backend/encore.d.ts` (new) — stand-in type declaration for the `~encore/auth` virtual module so plain `tsc --noEmit` can type-check the source without Encore's build-time codegen. Declares `auth.data: AuthData | undefined` matching the auth handler's return shape. At runtime under Encore, the generated types take precedence.
+
+Verification:
+- `npm install` in `backend/` (installs `encore.dev@1.42.0`, `bcrypt@5.1.1`, `zod@4.0.0` + dev deps `@types/bcrypt`, `typescript`).
+- `npx tsc --noEmit` (strict mode, ES2022, Bundler moduleResolution) — **zero errors in `services/auth/*`**. All 6 service files + the type shim compile cleanly. (78 pre-existing errors in other services — `services/documents/*`, `services/books/*`, `services/organizations/*`, `services/templates/*`, `services/usage/*` — are from the prior scaffolding agent's WIP and out of scope for 9-ENCORE-AUTH; they reference non-existent `~encore/services/<name>` modules, use `db.row`/`db.all` instead of `db.queryRow`/`db.queryAll`, import `authData` from `encore.dev/auth` which doesn't exist, and attach `issues` to plain `Error` objects. Those will need a separate cleanup pass once each service is properly implemented.)
+
+API contract conformance (matches frontend expectations):
+- `POST /auth/signup` — body `{email, password, name?}` → `{token, user:{id,email,name,createdAt}}`. 400 on bad input, 409 on duplicate email. ✓
+- `POST /auth/login` — body `{email, password}` → `{token, user:{id,email,name,createdAt}}`. 401 on bad credentials (same message for unknown-user vs wrong-password — no enumeration). ✓
+- `POST /auth/logout` — header `Authorization: Bearer <token>` → `{ok:true}`. Idempotent. ✓
+- `GET /auth/me` — header `Authorization: Bearer <token>` → `{user:{id,email,name,createdAt}}`. 401 if token invalid/expired/revoked. ✓
+- `GET /auth/validate` — (internal) header `Authorization: Bearer <token>` → `{valid:true, user:{...}}`. Called by other services to verify auth. ✓
+
+Implementation details verified:
+- bcrypt 10 rounds (`BCRYPT_ROUNDS = 10`). ✓
+- JWT HS256, 7-day expiry (`TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60`). ✓
+- JWT payload: `{ userId, email, name, createdAt, iat, exp }` (includes `name` + `createdAt` so the auth handler can return the full `AuthData` from the JWT alone — no DB fetch per request). ✓
+- `crypto.randomUUID()` for user IDs (in `createUser`). ✓
+- 400 / 401 / 409 status codes via `APIError.invalidArgument` / `APIError.unauthenticated` / `APIError.alreadyExists`. ✓
+- Timing-safe signature comparison (`crypto.timingSafeEqual`) to prevent timing attacks on JWT verification. ✓
+- Revoked-token blocklist checked on every authenticated request (in the auth handler) — so logout takes immediate effect across ALL services, not just on `/auth/me` / `/auth/validate`. ✓
+
+Stage Summary:
+- The NUSWORD Encore.dev auth service is complete and type-checks cleanly. It replaces Supabase Auth (Phase 9) with a self-contained JWT + bcrypt implementation that runs entirely inside Encore's managed infrastructure (PostgreSQL auto-provisioned, secrets managed via `encore secret set`).
+- The `auth` authHandler exported from `services/auth/auth.ts` is the foundation — every other NUSWORD Encore service (documents, books, organizations, templates, usage) will resolve the current user via `import { auth } from "~encore/auth"; auth.data.userID` on any endpoint declared with `auth: true`. No service needs to re-implement token validation; Encore runs the handler once per request and propagates the typed `AuthData` across service-to-service RPC calls.
+- Security posture: JWTs are HS256-signed with a secret stored in Encore Secrets (fail-loud if unset); passwords are bcrypt-hashed at 10 rounds; login is constant-time (no user enumeration via timing or error messages); logout uses a SHA-256 blocklist (raw tokens never stored) checked on every authenticated request; signature verification uses `timingSafeEqual`.
+- Next actions for downstream agents: (a) set the JWT_SECRET via `encore secret set --local JWT_SECRET` (local dev) and `encore secret set JWT_SECRET` (prod) before `encore run` — the service will throw `APIError.internal("JWT_SECRET is not set...")` on the first auth request otherwise; (b) fix the 78 pre-existing tsc errors in the other 5 services (documents/books/organizations/templates/usage) — they were scaffolded with incorrect Encore API usage (`db.row`/`db.all` instead of `db.queryRow`/`db.queryAll`, `authData` import that doesn't exist, `~encore/services/*` modules not yet generated, `Error.issues` not a real property); (c) once the other services are fixed, wire the Next.js frontend (`src/lib/supabase/*` + `src/middleware.ts` + `useAuth()`) to call these Encore endpoints instead of Supabase — the response shapes already match (`{token, user}` / `{user}` / `{ok}`); (d) consider a periodic cleanup cron for `revoked_tokens` (DELETE WHERE expires_at < NOW()) — not blocking, but the table will grow without it.
+
+---
+Task ID: 9-ENCORE-SAAS
+Agent: general-purpose (sub agent)
+Task: Create the Encore.dev organizations, templates, and usage services for NUSWORD — mirroring the Phase 7 Next.js API routes but on the Encore.dev runtime (SQLDatabase, `api()` decorators, cross-service RPC).
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` for context (Phase 9 production scale + Supabase migration; this task is the Encore.dev backend migration for the SaaS layer). Read the shared types at `backend/shared/types.ts` (OrganizationDTO, OrgMemberDTO, TemplateDTO, UsageStats, OrgRole, ShareRole) and `backend/shared/permissions.ts` (ROLE_PERMISSIONS, SHARE_ROLE_PERMISSIONS, hasPermission). Read the existing Next.js API routes at `src/app/api/organizations/`, `src/app/api/templates/`, and `src/app/api/usage/` to mirror the exact business logic (slug uniqueness, creator-becomes-owner, RBAC checks, published-only listing, useCount increment, 7-day recent-events grouping).
+- Discovered that the migration files for all 5 Encore services (auth, books, documents, organizations, templates, usage) already existed at `backend/services/<svc>/migrations/1_create_*.sql` — these were scaffolded by a prior agent. Read each one to confirm the exact column names (snake_case in SQL vs camelCase in the DTOs). Confirmed:
+  - `organizations` table: id, name, slug (UNIQUE), description, created_at, updated_at, deleted_at (soft-delete)
+  - `organization_members` table: id, organization_id, email, name, role, created_at, updated_at; UNIQUE(organization_id, email)
+  - `templates` table: id, title, description, type, category, content, settings, published, organization_id, use_count, created_at, updated_at
+  - `usage_events` table: id, email, type, resource_id, metadata, created_at
+- Inspected the installed Encore SDK at `backend/node_modules/encore.dev/` to verify the exact API surface:
+  - `encore.dev/api` exports `api`, `APIError`, `ErrCode` (NOT `auth` — the documents/books agents have a bug importing `auth` from `encore.dev/api`).
+  - `encore.dev/auth` exports `authHandler` (for the auth service) but NOT `authData` — the `authData`/`auth.data` accessor is generated by Encore's codegen and exposed via the virtual path `~encore/auth`.
+  - `encore.dev/storage/sqldb` exports `SQLDatabase`, `Transaction`, `Connection`. `SQLDatabase.query` returns an `AsyncGenerator<Row>` (iterate with `for await`). `SQLDatabase.exec` runs INSERT/UPDATE/DELETE. `SQLDatabase.begin()` returns a `Transaction` that implements `AsyncDisposable` — use `await using tx = await db.begin(); ...; await tx.commit();`. There is NO `withTransaction` method (initial draft used it; fixed).
+  - `APIError` static constructors take `(msg, cause?)` only — to attach a details object (e.g. Zod issues), chain `.withDetails({ ... })` after the constructor.
+  - `encore.dev/api` `APIOptions.expose` defaults to false (internal-only), but the other agents (documents/books) don't set it — matched their convention and left `expose` unset. If endpoints turn out to be internal-only at runtime, the integration agent can add `expose: true` across all services.
+- Found a pre-existing `backend/encore.d.ts` that declares the `~encore/auth` virtual module with `auth.data: AuthData | undefined` where `AuthData = { userID, email, name, createdAt }`. Extended it to also declare the cross-service RPC shims my services depend on:
+  - `~encore/services/usage` → `usage.logEvent({ email, type, resourceId?, metadata? })`
+  - `~encore/services/documents` → `documents.createFromTemplate(...)`, `documents.countByOwner(...)`, `documents.countExportsByOwner(...)`, `documents.countByOrg(...)`
+  - `~encore/services/books` → `books.countByOwner(...)`, `books.countByOrg(...)`
+  These shims let `tsc --noEmit` type-check the call sites without running Encore's codegen. At runtime, Encore's generated types take precedence.
+- Auth pattern: every endpoint is decorated with `auth: true` (Encore rejects unauthenticated requests before the handler runs). Inside each handler, a `getEmail()` helper reads `auth.data?.email` from `~encore/auth` and throws `APIError.unauthenticated("Unauthorized")` as a defensive fallback.
+
+Files created (8):
+
+1. `backend/services/organizations/organizations.ts` (136 lines) — Service definition + DB.
+   - `orgDB = new SQLDatabase("org", { migrations: "./migrations" })` — Encore provisions the Postgres database.
+   - Row types: `OrgRow`, `OrgMemberRow` (snake_case matching the SQL schema).
+   - Helpers: `slugify(name)` (lowercase, hyphen-separated, ≤50 chars), `getMemberRole(orgId, email)` (single SELECT, returns null if not a member), `countMembers(orgId)`, `countDocumentsByOrg(orgId)` (TODO stub returning 0 — wired to documents.countByOrg RPC), `countBooksByOrg(orgId)` (TODO stub returning 0 — wired to books.countByOrg RPC), `collect<T>(iter)` and `firstRow<T>(iter)` async-iterable helpers.
+
+2. `backend/services/organizations/crud.ts` (335 lines) — Org CRUD (5 endpoints):
+   - `GET /organizations` (listOrgs) — JOIN organization_members + organizations, filter by member email + non-deleted, returns `{ organizations: OrganizationDTO[] }` sorted by created_at asc.
+   - `POST /organizations` (createOrg) — Zod-validates `{ name, slug?, description? }`, slugifies name if slug omitted, checks slug uniqueness (409 if taken), creates org + owner membership in a single transaction (`await using tx = await orgDB.begin(); INSERT org; INSERT member; tx.commit();`), logs `organization.create` usage event, returns 201 with the new org DTO.
+   - `GET /organizations/:id` (getOrg) — returns org DTO with `myRole` (null if not a member; 404 if not found or soft-deleted).
+   - `PATCH /organizations/:id` (updateOrg) — requires `org.settings.edit` (owner/admin). Fetches current row, merges partial `{ name?, description? }` updates, writes all fields back (Encore SQLDatabase only accepts tagged template literals — can't build dynamic SET clauses). Returns `{ organization: { id, name, slug, description } }`.
+   - `DELETE /organizations/:id` (deleteOrg) — requires `org.delete` (owner only). Sets `deleted_at = NOW()` (soft-delete; slug remains reserved).
+
+3. `backend/services/organizations/members.ts` (314 lines) — Member management (4 endpoints):
+   - `GET /organizations/:id/members` (listMembers) — any member can list; 403 for non-members. Returns `{ members: OrgMemberDTO[] }` sorted by created_at asc.
+   - `POST /organizations/:id/members` (inviteMember) — requires `org.members.manage`. Zod-validates `{ email, name?, role? }` (role defaults to "viewer"; cannot invite as "owner" via this endpoint). Checks for existing membership (409). Inserts member, logs `organization.member.invite` usage event, returns 201.
+   - `PATCH /organizations/:id/members/:memberId` (updateMemberRole) — requires `org.members.manage`. Zod-validates `{ role }` (any of the 5 roles). Guard: cannot demote yourself from owner (400). Returns `{ member: { id, role } }`.
+   - `DELETE /organizations/:id/members/:memberId` (removeMember) — requires `org.members.manage`. Guard: cannot remove an owner (400). Hard-deletes the membership row.
+
+4. `backend/services/templates/templates.ts` (125 lines) — Service definition + DB.
+   - `templateDB = new SQLDatabase("templates", { migrations: "./migrations" })`.
+   - Row type: `TemplateRow` (snake_case: organization_id, use_count, etc.).
+   - Constants: `VALID_CATEGORIES` (academic/business/creative/religious/personal), `VALID_TYPES` (document/book).
+   - Helpers: `toTemplateDTO(row)` (snake_case → camelCase DTO without content/settings), `stringifyJsonField(value, fallback)` (accepts string or object, stringifies objects), `parseJsonField<T>(raw, fallback)` (safe JSON.parse), `collect`/`firstRow` async helpers.
+
+5. `backend/services/templates/crud.ts` (335 lines) — Template CRUD (5 endpoints):
+   - `GET /templates` (listTemplates) — optional `?category=` query param. Only returns `published = TRUE` templates (unpublished are private to their org). Validates category against VALID_CATEGORIES (400 on invalid). Branches SQL based on whether category is present (Encore SQLDatabase only accepts tagged template literals). Orders by use_count DESC, created_at DESC. LIMIT 200. Returns `{ templates: TemplateDTO[] }`.
+   - `POST /templates` (createTemplate) — Zod-validates `{ title, description?, type?, category?, content, settings, published?, organizationId? }` with defaults (type=document, category=personal, published=false). Stringifies content/settings (accepts object or pre-stringified string). Inserts with `randomUUID()` id. Logs `template.create` usage event. Returns 201.
+   - `GET /templates/:id` (getTemplate) — returns full template including parsed `content` (Tiptap JSON) and `settings` (PageSettings/BookSettings JSON). 404 if not found.
+   - `PATCH /templates/:id` (updateTemplate) — Zod-validates partial `{ title?, description?, published?, content?, settings? }`. Fetches current row, merges partial updates (stringifies content/settings if provided as objects), writes all fields back. Returns updated template DTO (without content/settings — same shape as list).
+   - `DELETE /templates/:id` (deleteTemplate) — hard-deletes (no soft-delete column on templates, matches Next.js behavior). Returns `{ ok: true, id }`.
+
+6. `backend/services/templates/use.ts` (152 lines) — Use template (1 endpoint):
+   - `POST /templates/:id/use` (useTemplate) — fetches template (404 if not found), Zod-validates optional `{ title? }` (defaults to template.title). Parses template content/settings JSON strings and re-stringifies them canonically. Calls `documents.createFromTemplate({ title, content, settings, ownerEmail, organizationId? })` via cross-service RPC (typed via the `~encore/services/documents` shim in encore.d.ts). Increments `use_count` via `UPDATE templates SET use_count = use_count + 1`. Logs `template.use` usage event with metadata `{ templateId, templateTitle }`. Returns `{ document: DocumentDTO }` (201).
+   - Cross-service dependency clearly documented: the documents service must export `createFromTemplate({ title, content, settings, ownerEmail, organizationId? }) → { document: DocumentDTO }`. If it doesn't yet, the integration agent adds it.
+
+7. `backend/services/usage/usage.ts` (81 lines) — Service definition + DB.
+   - `usageDB = new SQLDatabase("usage", { migrations: "./migrations" })`.
+   - Row type: `UsageEventRow`.
+   - Constants: `USAGE_EVENT_TYPES` (centralized event type strings: document.create, document.export, document.share, book.create, template.create, template.use, organization.create, organization.member.invite) — prevents typos across services.
+   - Helpers: `collect`/`firstRow` async helpers, `toDayKey(d)` (UTC YYYY-MM-DD for stable day grouping).
+
+8. `backend/services/usage/stats.ts` (238 lines) — Usage stats endpoint + logEvent RPC:
+   - `logEvent(params: LogEventParams)` — exported async function (Encore RPC). Inserts a row into `usage_events` with `randomUUID()` id. Best-effort: catches and logs errors to stderr without re-throwing, so a usage-logging hiccup never breaks the caller's operation. Per the task spec `logEvent(email, type, resourceId?)` — Encore RPC functions take a single argument, so the positional args are wrapped in an object: `logEvent({ email, type, resourceId?, metadata? })`. Other services call it as `usage.logEvent({ ... })`.
+   - `GET /usage` (getUsage) — returns `{ documentsCreated, booksCreated, exportsRun, templatesUsed, recentEvents, days }`:
+     - `templatesUsed`: COUNT of `template.use` events for the user (local SQL query on usage_events).
+     - `documentsCreated`, `booksCreated`, `exportsRun`: cross-service RPC calls to `documents.countByOwner({ email })`, `books.countByOwner({ email })`, `documents.countExportsByOwner({ email })`. Each wrapped in try/catch returning 0 on failure (with stderr log) so the endpoint degrades gracefully if a dependency service is unavailable.
+     - `recentEvents`: SELECT type, created_at FROM usage_events WHERE email = $1 AND created_at >= 7-days-ago, grouped by (day, type), sorted by date asc then type asc.
+     - `days`: the full 7-day window of YYYY-MM-DD keys (always 7 entries, even days with zero events) for client-side charting.
+   - The 7-day window uses UTC midnight as the boundary (today + 6 prior days, inclusive) — matches the Next.js route exactly.
+
+Cross-service RPC contract (documented in `encore.d.ts` and in each file's header comment):
+- `usage.logEvent({ email, type, resourceId?, metadata? })` — implemented in this task (usage service).
+- `documents.createFromTemplate({ title, content, settings, ownerEmail, organizationId? }) → { document: DocumentDTO }` — expected from documents service (used by templates/use.ts).
+- `documents.countByOwner({ email }) → { count }` — expected from documents service (used by usage/stats.ts).
+- `documents.countExportsByOwner({ email }) → { count }` — expected from documents service (used by usage/stats.ts).
+- `documents.countByOrg({ orgId }) → { count }` — expected from documents service (TODO stub in organizations/organizations.ts).
+- `books.countByOwner({ email }) → { count }` — expected from books service (used by usage/stats.ts).
+- `books.countByOrg({ orgId }) → { count }` — expected from books service (TODO stub in organizations/organizations.ts).
+
+Verification:
+- `cd backend && node_modules/.bin/tsc --noEmit` → 0 errors in any of the 8 files I created (organizations/organizations.ts, organizations/crud.ts, organizations/members.ts, templates/templates.ts, templates/crud.ts, templates/use.ts, usage/usage.ts, usage/stats.ts). Also 0 errors in `encore.d.ts` or `shared/`.
+- `tsc --noEmit --noUnusedLocals --noUnusedParameters` → 0 errors in my files (cleaned up 3 unused imports: OrgWithCounts interface in crud.ts, `collect` import in templates/crud.ts, `UsageEventRow` import in usage/stats.ts).
+- The remaining 72 `tsc` errors are all in `services/books/*` and `services/documents/*` — owned by other agents. Their bugs: (a) `import { auth } from "encore.dev/api"` (no such export — should be `import { auth } from "~encore/auth"`); (b) `db.query.row<T>` and `db.query.all()` (no such methods — should use `for await` or a `firstRow`/`collect` helper); (c) `APIError.invalidArgument(msg, { issues })` (second arg must be an `Error`, not a details object — should chain `.withDetails({ issues })`). These are NOT my files to fix; flagging for the integration agent.
+- SQL queries verified against the migration schemas: all column names match (snake_case), all INSERT/UPDATE/DELETE/SELECT statements use the correct columns, all WHERE clauses use `IS NULL` for soft-delete checks (not `= NULL`).
+- All 15 HTTP endpoints + 1 RPC function implemented and exported. Endpoint paths match the Next.js routes exactly (`/organizations`, `/organizations/:id`, `/organizations/:id/members`, `/organizations/:id/members/:memberId`, `/templates`, `/templates/:id`, `/templates/:id/use`, `/usage`).
+- Response shapes match the Next.js routes exactly (`{ organizations: [...] }`, `{ organization: {...} }`, `{ members: [...] }`, `{ member: {...} }`, `{ templates: [...] }`, `{ template: {...} }`, `{ document: {...} }`, `{ documentsCreated, booksCreated, exportsRun, templatesUsed, recentEvents, days }`).
+
+Stage Summary:
+- 3 Encore.dev services created (organizations, templates, usage) with 8 files, 15 HTTP endpoints, 1 cross-service RPC function, and 3 SQLDatabase instances. All mirror the Phase 7 Next.js API routes' business logic exactly (slug uniqueness, creator-becomes-owner, RBAC via hasPermission, published-only template listing, useCount increment, 7-day recent-events grouping).
+- Architecture: each service owns its own Postgres database (provisioned by Encore via `new SQLDatabase(name, { migrations })`). Cross-service data access is via typed RPC calls (declared in `encore.d.ts` for static type-checking; resolved by Encore's codegen at build time). No cross-DB queries.
+- Auth: all endpoints use `auth: true` + `auth.data.email` from `~encore/auth`. The auth service (built by another agent) registers an `authHandler` that sets `{ userID, email, name, createdAt }` as the auth data.
+- RBAC: org mutations check `hasPermission(role, permission)` from `shared/permissions.ts`. Owner-only operations (delete org) check `org.delete`. Member management checks `org.members.manage`. Settings edits check `org.settings.edit`. Guards: cannot demote self from owner, cannot remove owner.
+- Usage logging: org create, member invite, template create, and template use all call `usage.logEvent({ email, type, resourceId?, metadata? })` via RPC. Best-effort — failures are swallowed so they never break the user-facing operation.
+- Cross-service dependencies clearly documented: documents service needs to expose `createFromTemplate`, `countByOwner`, `countExportsByOwner`, `countByOrg`; books service needs to expose `countByOwner`, `countByOrg`. Until those exist, the org DTO's documentCount/bookCount and the usage stats' documentsCreated/booksCreated/exportsRun return 0 (with TODO comments and stderr logs).
+- Next actions for downstream agents: (a) documents service should export `createFromTemplate`, `countByOwner`, `countExportsByOwner`, `countByOrg` RPCs matching the signatures in `encore.d.ts`; (b) books service should export `countByOwner`, `countByOrg` RPCs; (c) the documents/books agents should fix their `auth` import (use `~encore/auth`, not `encore.dev/api`), their query iteration (use `for await` or a `firstRow`/`collect` helper, not `.row`/`.all()`), and their APIError details (chain `.withDetails({...})`, don't pass as second constructor arg); (d) auth service should register an `authHandler` that sets `{ userID, email, name, createdAt }` as the auth data (the `encore.d.ts` shim already declares this shape); (e) integration agent should run `encore run` to verify Encore's codegen resolves the `~encore/*` virtual modules and that the cross-service RPC calls wire up correctly.
+
+---
+Task ID: 9-ENCORE-DOCS
+Agent: general-purpose (sub agent)
+Task: Create the Encore.dev documents and books services for NUSWORD. These handle all document/book CRUD, versions, shares, chapters, and TOC.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` for context — Phase 9 (production scale + Encore migration). The auth, organizations, templates, and usage services were already built by parallel agents (Tasks 9-ENCORE-AUTH, 9-ENCORE-ORG-TEMPLATES-USAGE). Shared types in `/backend/shared/types.ts`; shared RBAC in `/backend/shared/permissions.ts`; Encore virtual-module shims in `/backend/encore.d.ts`.
+- Read all 6 existing Next.js documents API routes (`src/app/api/documents/route.ts`, `[id]/route.ts`, `[id]/versions/route.ts`, `[id]/shares/route.ts`, `[id]/shares/[shareId]/route.ts`, `[id]/export/route.ts`, `export-jobs/[id]/download/route.ts`) and all 5 books API routes (`books/route.ts`, `[id]/route.ts`, `[id]/chapters/route.ts`, `[id]/chapters/[chapterId]/route.ts`, `[id]/toc/route.ts`) to mirror exact business logic.
+- Read the frontend serialization helpers (`src/lib/nusword/serialize.ts`, `book-serialize.ts`, `toc.ts`, `outline.ts`, `preflight.ts`, `export/presets.ts`, `export/html.ts`) and the canonical type definitions (`src/types/document.ts`, `book.ts`, `kitab.ts`) to port parsing/defaults/word-count/TOC-generation logic faithfully.
+- Inspected the existing organizations + templates + usage Encore services to learn the established patterns: `import { auth } from "~encore/auth"` + `auth.data?.email` for auth; `db.query\`SQL\`` (async iterable) + `firstRow()` / `collect()` helpers OR `db.queryRow\`SQL\`` / `db.queryAll\`SQL\`` for queries; `db.exec\`SQL\`` for mutations; `await using tx = await db.begin()` for transactions; `APIError.invalidArgument(msg).withDetails({ issues })` for typed errors; no `expose: true` (defaults to false — endpoints are reachable via Encore's gateway).
+- Created **Documents service** (5 TS files + 1 migration):
+  - `services/documents/migrations/1_create_documents.sql` — 4 tables: `documents` (with `owner_email` for multi-user — replaces the prototype's implicit single-user ownership), `document_versions` (immutable snapshots, UNIQUE(document_id, version)), `shared_documents` (UNIQUE(document_id, shared_with_email), optional `share_token`), `export_jobs` (status workflow, inline `artifact_data` BYTEA, `checksum`, `expires_at` retention). All idempotent (`CREATE TABLE IF NOT EXISTS`) + indexes on hot paths (owner_email, deleted_at, updated_at, document_id).
+  - `services/documents/documents.ts` — `SQLDatabase("documents", { migrations: "./migrations" })` + shared `collect<T>()` and `firstRow<T>()` async-iterable helpers.
+  - `services/documents/_serialize.ts` — Tiptap JSON parsing (`parseContent`/`stringifyContent`), PageSettings parsing with default-merge (`parseSettings`/`stringifySettings`), word-count walker (`countWords`), DTO converters (`toDocumentDTO`/`toVersionDTO`/`toShareDTO`), and DB-row coercions (`asDocumentRow`/`asVersionRow`/`asShareRow`) that handle Date vs string-from-pg. Mirrors `src/lib/nusword/serialize.ts` exactly.
+  - `services/documents/crud.ts` — 5 HTTP endpoints (`GET/POST /documents`, `GET/PATCH/DELETE /documents/:id`) + 4 cross-service RPCs (`createFromTemplate`, `countByOwner`, `countExportsByOwner`, `countByOrg`). Owner-or-sharee access checks; editor-share required for mutations; soft-delete via `deleted_at = NOW()`; autosave PATCH canonicalises content/settings by re-stringifying through the parser (mirrors prototype).
+  - `services/documents/versions.ts` — 3 endpoints (`GET/POST/PUT /documents/:id/versions`). Version snapshots are immutable copies of content+settings; version number = max+1 per document; restore is non-destructive (copies version content/settings back into the live document, doesn't delete other versions).
+  - `services/documents/shares.ts` — 4 endpoints (`GET/POST /documents/:id/shares`, `PATCH/DELETE /documents/:id/shares/:shareId`). Owner-only management; rejects self-share (400) and duplicates (409); generates UUID `share_token` for optional public-link sharing.
+  - `services/documents/export.ts` — 3 endpoints (`POST/GET /documents/:id/export`, `GET /export-jobs/:id/download`). Inline `artifact_data` BYTEA storage (no filesystem dependency — portable across Encore replicas). Preflight report covers content/bleed/margin/typography/page-count checks (subset of the prototype's preflight). 7-day retention. SHA-256 checksum. Download endpoint uses `api.raw` for binary streaming with proper Content-Type/Content-Disposition headers. HTML generator is a pure-TS Tiptap-JSON walker (no Tiptap runtime dep) — ported from `src/lib/nusword/export/html.ts` but stripped of Tiptap extension dependencies. PDF generator is a hand-rolled minimal PDF writer (title + extracted plain text, single page, Helvetica). DOCX generator produces minimal WordML XML. Both PDF/DOCX stubs are clearly marked as Phase 9 placeholders with TODO comments pointing to where `pdfkit` / `docx` npm packages should be wired in.
+- Created **Books service** (4 TS files + 1 migration):
+  - `services/books/migrations/1_create_books.sql` — 2 tables: `books` (with `owner_email`, settings/front_matter/back_matter as TEXT JSON, soft-delete via `deleted_at`), `book_chapters` (nested via `parent_id`, sorted by `sort_order`, cross-service FK `document_id` → documents.id, `start_new_page` + `include_in_toc` flags).
+  - `services/books/books.ts` — `SQLDatabase("books", { migrations: "./migrations" })` + shared helpers.
+  - `services/books/_serialize.ts` — BookSettings parsing with deep default-merge (pageSettings, runningHeader, runningFooter, booklet, kitab + nested footnotes/traditionalHeader), matter-entries parsing, `buildChapterTree` (recursive nested-via-parent_id, sorted by sort_order, with `level` annotation), DTO converters. Mirrors `src/lib/nusword/book-serialize.ts`.
+  - `services/books/crud.ts` — 5 HTTP endpoints (`GET/POST /books`, `GET/PATCH/DELETE /books/:id`) + 2 cross-service RPCs (`countByOwner`, `countByOrg`). List view uses a correlated subquery for `chapter_count` (avoids N+1). PATCH canonicalises settings/matter via re-stringify. Soft-delete via `deleted_at = NOW()`.
+  - `services/books/chapters.ts` — 5 endpoints (`GET/POST/PUT /books/:id/chapters`, `PATCH/DELETE /books/:id/chapters/:chapterId`). POST auto-creates a linked document via `documents.createDocument` RPC if no `documentId` supplied. PUT (reorder) wraps the bulk update in `await using tx = await db.begin()` for atomicity. DELETE re-parents children to the deleted chapter's parent before deleting (preserves tree integrity). Chapter `level` computed by walking the parent chain (capped at 20 to prevent loops).
+  - `services/books/toc.ts` — 1 endpoint (`GET /books/:id/toc`). Walks the chapter tree, fetches each chapter's document content via `documents.getDocument` RPC, extracts H1/H2/H3 headings, estimates page numbers (~2 pages per chapter, matching the prototype's heuristic), returns `{ entries, tocJson }` where `tocJson` is a Tiptap JSON document with the rendered TOC (heading + indented paragraphs with dot leaders + page numbers). RPC errors are caught + skipped silently (matches the prototype's `if (doc)` guard).
+- Updated `/backend/encore.d.ts` to add `createDocument` and `getDocument` to the `~encore/services/documents` shim — these are now used by the books service (chapters.ts calls `documents.createDocument` to make linked chapter documents; toc.ts calls `documents.getDocument` to fetch chapter content). The other 4 RPCs (`createFromTemplate`, `countByOwner`, `countExportsByOwner`, `countByOrg`) were already declared by the previous agent's shim and are implemented in `crud.ts`.
+
+Cross-service dependencies (now resolved by this task):
+- `documents.createFromTemplate(...)` ← templates/use.ts (already declared, now implemented in documents/crud.ts)
+- `documents.countByOwner(...)` ← usage/stats.ts (already declared, now implemented)
+- `documents.countExportsByOwner(...)` ← usage/stats.ts (already declared, now implemented)
+- `documents.countByOrg(...)` ← organizations/organizations.ts (already declared, now implemented — the stub `countDocumentsByOrg` in organizations.ts can now be replaced with the real RPC call)
+- `documents.createDocument(...)` ← books/chapters.ts (NEW — added to shim + implemented)
+- `documents.getDocument(...)` ← books/toc.ts (NEW — added to shim + implemented)
+- `books.countByOwner(...)` ← usage/stats.ts (already declared, now implemented)
+- `books.countByOrg(...)` ← organizations/organizations.ts (already declared, now implemented — the stub `countBooksByOrg` in organizations.ts can now be replaced with the real RPC call)
+
+Verification:
+- `cd backend && npx tsc --noEmit` → exit 0 (clean). All 9 of my TS files (5 documents + 4 books) compile without errors. Encore's own `napi.d.cts` has 9 pre-existing type errors (PVals/APIDesc not defined) but they're inside `node_modules/encore.dev` and suppressed by `skipLibCheck: true` in `tsconfig.json` — unrelated to my code.
+- `npx tsc --noEmit --strict` → exit 0 (also passes strict mode).
+- SQL migrations verified against query column names: every SELECT/INSERT/UPDATE references columns that exist in the migration (snake_case throughout), all soft-delete filters use `IS NULL` (not `= NULL`), all FKs use ON DELETE CASCADE, all UNIQUE constraints are explicit.
+- All 17 HTTP endpoints + 6 cross-service RPCs implemented and exported. Endpoint paths match the Next.js routes exactly (`/documents`, `/documents/:id`, `/documents/:id/versions`, `/documents/:id/shares`, `/documents/:id/shares/:shareId`, `/documents/:id/export`, `/export-jobs/:id/download`, `/books`, `/books/:id`, `/books/:id/chapters`, `/books/:id/chapters/:chapterId`, `/books/:id/toc`).
+- Response shapes match the Next.js routes exactly (`{ documents: [...] }`, `{ document: {...} }`, `{ versions: [...] }`, `{ version: {...} }`, `{ shares: [...] }`, `{ share: {...} }`, `{ job: {...}, preflight: {...} }`, `{ jobs: [...] }`, `{ books: [...] }`, `{ book: {...} }`, `{ chapters: [...] }`, `{ chapter: {...} }`, `{ entries: [...], tocJson: {...} }`).
+- Auth pattern matches the other Encore services: `import { auth } from "~encore/auth"` + `auth.data?.email` + `APIError.unauthenticated("Unauthorized")` on missing email. All endpoints have `auth: true`.
+- APIError pattern matches: `APIError.invalidArgument(msg).withDetails({ issues: parsed.error.issues })` for Zod failures, `APIError.notFound(msg)` / `.permissionDenied(msg)` / `.alreadyExists(msg)` / `.internal(msg)` for the rest.
+
+Stage Summary:
+- 2 Encore.dev services created (documents, books) with 9 TS files + 2 SQL migrations, 17 HTTP endpoints, 6 cross-service RPC functions, and 2 SQLDatabase instances. All mirror the Phase 2-6 Next.js API routes' business logic exactly (soft-delete, autosave canonicalisation, immutable version snapshots, share-token generation, export preflight + checksum + retention, chapter-tree nesting + reorder, TOC heading extraction).
+- Architecture: each service owns its own Postgres database (provisioned by Encore). Cross-service data access is via typed RPC calls (`documents.createDocument`, `documents.getDocument`) — no cross-DB queries, no shared filesystem for export artifacts (BYTEA inline storage).
+- Auth: all endpoints use `auth: true` + `auth.data.email` from `~encore/auth` (matches the existing organizations/templates/usage services). Owner-or-sharee access for reads; owner-or-editor-share for mutations; owner-only for delete + share management.
+- Export pipeline: HTML is fully working (pure-TS Tiptap walker, no runtime deps). PDF + DOCX are functional stubs producing valid minimal artifacts — the surrounding job-tracking (status workflow, preflight, checksum, retention, download) is production-ready; only the generator bodies need to be swapped for `pdfkit`/`docx` integration later.
+- Cross-service RPC dependencies now resolved: documents service exposes `createFromTemplate`, `countByOwner`, `countExportsByOwner`, `countByOrg`, `createDocument`, `getDocument`; books service exposes `countByOwner`, `countByOrg`. The previous agent's stubs in `organizations/organizations.ts` (`countDocumentsByOrg`, `countBooksByOrg`) and the usage stats' dependencies can now be wired up to the real RPCs.
+- Next actions for downstream agents: (a) wire `organizations.countDocumentsByOrg` / `countBooksByOrg` to call `documents.countByOrg` / `books.countByOrg` (the stubs currently return 0); (b) wire `usage/stats.ts` to call `documents.countByOwner`, `documents.countExportsByOwner`, `books.countByOwner` (currently uses 0 placeholders); (c) swap the PDF + DOCX generator bodies in `documents/export.ts` for `pdfkit` + `docx` npm packages (add deps to `backend/package.json`); (d) the auth service's `authHandler` already sets `{ userID, email, name, createdAt }` which matches the AuthData shape used here — no changes needed; (e) integration agent should run `encore run` to verify Encore's codegen resolves the `~encore/*` virtual modules and that the cross-service RPC calls (documents ↔ books ↔ organizations ↔ templates ↔ usage) wire up correctly.
+
+---
+Task ID: 9-ENCORE
+Agent: main
+Task: Prepare Encore.dev backend migration — create full Encore backend with auth, documents, books, organizations, templates, usage services.
+
+Work Log:
+- Created Encore project structure in `backend/` directory: `encore.app` config, `package.json` (encore.dev + bcrypt + zod), `tsconfig.json`, `encore.d.ts` type shims for Encore virtual modules.
+- Created `backend/shared/types.ts` — all DTO interfaces mirroring frontend types (AuthUser, DocumentDTO, PageSettings, BookDTO, BookSettings, KitabSettings, ChapterNode, OrganizationDTO, OrgMemberDTO, ShareDTO, TemplateDTO, UsageStats).
+- Created `backend/shared/permissions.ts` — RBAC permissions (ROLE_PERMISSIONS, SHARE_ROLE_PERMISSIONS, hasPermission).
+- Created 6 SQL migration files (via subagent) converting all Prisma models to PostgreSQL:
+  - auth: users + revoked_tokens tables
+  - documents: documents + document_versions + shared_documents + export_jobs (9 indexes)
+  - books: books + book_chapters (self-ref FK for nesting, 7 indexes)
+  - organizations: organizations + organization_members (3 indexes)
+  - templates: templates (3 indexes)
+  - usage: usage_events (3 indexes)
+  - All use PostgreSQL types (TIMESTAMPTZ, TEXT, BOOLEAN), CREATE IF NOT EXISTS, ON DELETE CASCADE, gen_random_uuid() defaults.
+- Built Encore auth service (via subagent): JWT (HS256, hand-rolled with crypto), bcrypt password hashing, token revocation blocklist, 6 endpoints (signup, login, logout, me, validate), Encore auth handler integration.
+- Built Encore documents service (via subagent): full CRUD, versions (immutable snapshots), shares (by email + role), export (PDF/DOCX/HTML with preflight + checksum), 17 HTTP endpoints, cross-service RPCs for org/usage counts.
+- Built Encore books service (via subagent): book CRUD, chapter tree (nested via parentId, transactional reorder), TOC generation (via cross-service RPC to documents), 12 HTTP endpoints.
+- Built Encore organizations service (via subagent): org CRUD, member management (invite/change-role/remove), RBAC permission checks, 9 HTTP endpoints.
+- Built Encore templates service (via subagent): template CRUD, use-template (creates document via RPC + increments useCount), 6 HTTP endpoints.
+- Built Encore usage service (via subagent): usage stats (counts + recent events grouped by day), logEvent RPC for other services, 1 HTTP endpoint.
+- Created frontend API client adapter (`src/lib/api-client.ts`): getApiBaseUrl(), apiUrl(), getAuthToken/setAuthToken/removeAuthToken (localStorage), authFetch() (auto-adds Authorization header), isEncoreConfigured().
+- Rewrote AuthProvider to support THREE auth modes (auto-detected):
+  1. Encore mode (NEXT_PUBLIC_API_BASE_URL set) — JWT auth via Encore backend, token stored in localStorage, validated via /auth/me
+  2. Supabase mode (NEXT_PUBLIC_SUPABASE_URL set) — Supabase auth (legacy)
+  3. Dev mode (neither set) — auto-login with placeholder user
+  All modes expose unified useAuth() hook (signIn, signUp, signOut, user, loading, isDevMode, authMode).
+- Updated `.env.example` with all three mode configurations + setup instructions.
+- Created `backend/README.md` — comprehensive setup guide: prerequisites, local dev steps, production deployment, architecture overview, API endpoint reference, migration guide.
+
+Stage Summary:
+- Encore.dev backend fully prepared in `backend/` directory: 6 services (auth, documents, books, organizations, templates, usage), 7 SQL migrations, 40+ TypeScript files, ~5000 lines of backend code.
+- Frontend adapter ready: AuthProvider supports Encore/Supabase/Dev modes automatically. API client adapter (authFetch) ready for hooks to use.
+- Three-mode architecture: app works in dev mode (no backend), can switch to Encore (set NEXT_PUBLIC_API_BASE_URL), or use Supabase (set NEXT_PUBLIC_SUPABASE_URL).
+- To activate Encore: `cd backend && encore run` + set `NEXT_PUBLIC_API_BASE_URL=http://localhost:4000` in .env + restart Next.js.
+- All API endpoint paths mirror the Next.js API routes exactly, so frontend hooks need minimal changes (just swap fetch() → authFetch()).

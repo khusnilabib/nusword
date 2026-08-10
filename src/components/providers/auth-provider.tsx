@@ -1,20 +1,33 @@
 "use client";
 
 /**
- * AuthProvider — wraps the app with Supabase auth state.
+ * AuthProvider — wraps the app with auth state.
  *
- * Provides the current user (or null) via the useAuth hook.
- * If Supabase is not configured, falls back to a dev user.
+ * Supports three auth modes (checked in order):
+ * 1. Encore mode (NEXT_PUBLIC_API_BASE_URL set) — JWT auth via Encore backend
+ * 2. Supabase mode (NEXT_PUBLIC_SUPABASE_URL set) — Supabase auth
+ * 3. Dev mode (neither set) — auto-login with placeholder user
+ *
+ * The provider exposes a unified useAuth() hook regardless of mode.
  */
 import * as React from "react";
 import type { User } from "@supabase/supabase-js";
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { createClient as createSupabaseClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  isEncoreConfigured,
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+  apiUrl,
+} from "@/lib/api-client";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  /** Dev mode: true when Supabase is not configured. */
+  /** Dev mode: true when neither Encore nor Supabase is configured. */
   isDevMode: boolean;
+  /** Which auth backend is active. */
+  authMode: "dev" | "supabase" | "encore";
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
@@ -26,7 +39,7 @@ interface AuthContextValue {
 
 const AuthContext = React.createContext<AuthContextValue | undefined>(undefined);
 
-/** Dev fallback user when Supabase is not configured. */
+/** Dev fallback user when no auth backend is configured. */
 const DEV_USER = {
   id: "dev-user",
   aud: "authenticated",
@@ -41,87 +54,184 @@ const DEV_USER = {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const configured = isSupabaseConfigured();
+
+  const encoreConfigured = isEncoreConfigured();
+  const supabaseConfigured = isSupabaseConfigured();
+
+  const authMode: "dev" | "supabase" | "encore" = encoreConfigured
+    ? "encore"
+    : supabaseConfigured
+      ? "supabase"
+      : "dev";
+
+  const isDevMode = authMode === "dev";
 
   React.useEffect(() => {
-    if (!configured) {
-      // Dev mode — use fallback user.
+    if (authMode === "dev") {
       setUser(DEV_USER);
       setLoading(false);
       return;
     }
 
-    const supabase = createClient();
-    if (!supabase) {
-      setUser(DEV_USER);
-      setLoading(false);
+    if (authMode === "encore") {
+      // Encore mode — check for stored JWT token.
+      const token = getAuthToken();
+      if (!token) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // Validate token by calling /auth/me.
+      fetch(apiUrl("/auth/me"), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            removeAuthToken();
+            setUser(null);
+            return;
+          }
+          const data = await res.json();
+          setUser(data.user as User);
+        })
+        .catch(() => {
+          setUser(null);
+        })
+        .finally(() => setLoading(false));
       return;
     }
 
-    // Get initial session.
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      setLoading(false);
-    });
+    if (authMode === "supabase") {
+      const supabase = createSupabaseClient();
+      if (!supabase) {
+        setUser(DEV_USER);
+        setLoading(false);
+        return;
+      }
 
-    // Listen for auth changes.
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        setUser(user);
+        setLoading(false);
+      });
 
-    return () => subscription.unsubscribe();
-  }, [configured]);
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      });
 
-  const signIn = async (email: string, password: string) => {
-    if (!configured) {
-      // Dev mode — simulate success.
-      setUser(DEV_USER);
-      return { error: null };
+      return () => subscription.unsubscribe();
     }
-    const supabase = createClient();
+  }, [authMode]);
+
+  // ─── Encore signIn ──────────────────────────────────────────────────
+  const encoreSignIn = async (email: string, password: string) => {
+    const res = await fetch(apiUrl("/auth/login"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { error: data.message || data.error || "Login failed" };
+    }
+
+    const data = await res.json();
+    setAuthToken(data.token);
+    setUser(data.user as User);
+    return { error: null };
+  };
+
+  // ─── Encore signUp ──────────────────────────────────────────────────
+  const encoreSignUp = async (email: string, password: string, name?: string) => {
+    const res = await fetch(apiUrl("/auth/signup"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { error: data.message || data.error || "Signup failed" };
+    }
+
+    const data = await res.json();
+    setAuthToken(data.token);
+    setUser(data.user as User);
+    return { error: null };
+  };
+
+  // ─── Encore signOut ─────────────────────────────────────────────────
+  const encoreSignOut = async () => {
+    const token = getAuthToken();
+    if (token) {
+      await fetch(apiUrl("/auth/logout"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    removeAuthToken();
+    setUser(null);
+  };
+
+  // ─── Supabase signIn/signUp/signOut ─────────────────────────────────
+  const supabaseSignIn = async (email: string, password: string) => {
+    const supabase = createSupabaseClient();
     if (!supabase) return { error: "Supabase not configured" };
-
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message ?? null };
   };
 
-  const signUp = async (email: string, password: string, name?: string) => {
-    if (!configured) {
-      // Dev mode — simulate success.
-      setUser(DEV_USER);
-      return { error: null };
-    }
-    const supabase = createClient();
+  const supabaseSignUp = async (email: string, password: string, name?: string) => {
+    const supabase = createSupabaseClient();
     if (!supabase) return { error: "Supabase not configured" };
-
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { name },
-      },
+      options: { data: { name } },
     });
     return { error: error?.message ?? null };
   };
 
-  const signOut = async () => {
-    if (!configured) {
-      setUser(null);
-      return;
-    }
-    const supabase = createClient();
+  const supabaseSignOut = async () => {
+    const supabase = createSupabaseClient();
     if (!supabase) return;
     await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  // ─── Unified handlers ───────────────────────────────────────────────
+  const signIn = async (email: string, password: string) => {
+    if (authMode === "encore") return encoreSignIn(email, password);
+    if (authMode === "supabase") return supabaseSignIn(email, password);
+    // Dev mode
+    setUser(DEV_USER);
+    return { error: null };
+  };
+
+  const signUp = async (email: string, password: string, name?: string) => {
+    if (authMode === "encore") return encoreSignUp(email, password, name);
+    if (authMode === "supabase") return supabaseSignUp(email, password, name);
+    // Dev mode
+    setUser(DEV_USER);
+    return { error: null };
+  };
+
+  const signOut = async () => {
+    if (authMode === "encore") return encoreSignOut();
+    if (authMode === "supabase") return supabaseSignOut();
+    // Dev mode
     setUser(null);
   };
 
   const value: AuthContextValue = {
     user,
     loading,
-    isDevMode: !configured,
+    isDevMode,
+    authMode,
     signIn,
     signUp,
     signOut,
