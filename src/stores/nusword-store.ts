@@ -9,8 +9,9 @@
 import { create } from "zustand";
 
 export type NuswordView = "dashboard" | "editor";
+export type EditorMode = "edit" | "preview";
 
-export type EditorSidebarTab = "outline" | "pages";
+export type EditorSidebarTab = "outline" | "pages" | "versions";
 export type EditorPropertiesTab = "typography" | "layout";
 
 interface NuswordUiState {
@@ -19,6 +20,8 @@ interface NuswordUiState {
   activeDocumentId: string | null;
   /** Cache of the active doc title for the top nav (updated from query data). */
   activeDocTitle: string;
+  /** Edit vs Preview mode within the editor (PRD §3: preview). */
+  editorMode: EditorMode;
   editorSidebarTab: EditorSidebarTab;
   editorPropertiesTab: EditorPropertiesTab;
   isRtl: boolean;
@@ -29,9 +32,12 @@ interface NuswordUiState {
   mobileRightOpen: boolean;
   /** Find & replace panel visibility */
   showFindReplace: boolean;
+  /** Active page in preview/thumbnails (0-based). */
+  activePageIndex: number;
 
   openDocument: (id: string, title?: string) => void;
   setActiveDocTitle: (title: string) => void;
+  setEditorMode: (mode: EditorMode) => void;
   exitToDashboard: () => void;
   setEditorSidebarTab: (tab: EditorSidebarTab) => void;
   setEditorPropertiesTab: (tab: EditorPropertiesTab) => void;
@@ -42,12 +48,14 @@ interface NuswordUiState {
   setMobileRightOpen: (open: boolean) => void;
   toggleFindReplace: () => void;
   setShowFindReplace: (open: boolean) => void;
+  setActivePageIndex: (idx: number) => void;
 }
 
 export const useNuswordStore = create<NuswordUiState>((set) => ({
   view: "dashboard",
   activeDocumentId: null,
   activeDocTitle: "Untitled",
+  editorMode: "edit",
   editorSidebarTab: "outline",
   editorPropertiesTab: "typography",
   isRtl: false,
@@ -55,24 +63,30 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
   mobileLeftOpen: false,
   mobileRightOpen: false,
   showFindReplace: false,
+  activePageIndex: 0,
 
   openDocument: (id, title) =>
     set({
       view: "editor",
       activeDocumentId: id,
       activeDocTitle: title ?? "Untitled",
+      editorMode: "edit",
       mobileLeftOpen: false,
       mobileRightOpen: false,
       showFindReplace: false,
+      activePageIndex: 0,
     }),
   setActiveDocTitle: (activeDocTitle) => set({ activeDocTitle }),
+  setEditorMode: (editorMode) => set({ editorMode }),
   exitToDashboard: () =>
     set({
       view: "dashboard",
       activeDocumentId: null,
+      editorMode: "edit",
       mobileLeftOpen: false,
       mobileRightOpen: false,
       showFindReplace: false,
+      activePageIndex: 0,
     }),
   setEditorSidebarTab: (editorSidebarTab) => set({ editorSidebarTab }),
   setEditorPropertiesTab: (editorPropertiesTab) => set({ editorPropertiesTab }),
@@ -83,4 +97,5 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
   setMobileRightOpen: (mobileRightOpen) => set({ mobileRightOpen }),
   toggleFindReplace: () => set((s) => ({ showFindReplace: !s.showFindReplace })),
   setShowFindReplace: (showFindReplace) => set({ showFindReplace }),
+  setActivePageIndex: (activePageIndex) => set({ activePageIndex }),
 }));

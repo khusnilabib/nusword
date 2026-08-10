@@ -618,3 +618,106 @@ input[type="number"] {
   margin: 0 2px;
   flex-shrink: 0;
 }
+
+/* ============================================================
+   Page Break node (visible in editor)
+   ============================================================ */
+.nusword-page-break {
+  position: relative;
+  height: 32px;
+  margin: 12px 0;
+  border-top: 1px dashed var(--outline-variant);
+  border-bottom: 1px dashed var(--outline-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+.nusword-page-break-label {
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 12px;
+}
+
+/* ============================================================
+   Preview mode — multi-page paginated view
+   ============================================================ */
+.nusword-preview-page {
+  position: relative;
+  background: white;
+  margin: 0 auto 24px;
+  flex-shrink: 0;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.04), 0px 0px 1px rgba(0, 0, 0, 0.1);
+}
+.nusword-preview-content {
+  position: relative;
+}
+.nusword-preview-header,
+.nusword-preview-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 10px;
+  color: var(--on-surface-variant);
+  pointer-events: none;
+}
+.nusword-preview-header > span,
+.nusword-preview-footer > span {
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nusword-preview-header > span:first-child,
+.nusword-preview-footer > span:first-child {
+  text-align: left;
+}
+.nusword-preview-header > span:last-child,
+.nusword-preview-footer > span:last-child {
+  text-align: right;
+}
+
+/* Page thumbnail (sidebar) */
+.nusword-thumbnail {
+  position: relative;
+  background: white;
+  border: 1px solid var(--outline-variant);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.nusword-thumbnail:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.nusword-thumbnail.is-active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-fixed);
+}
+.nusword-thumbnail-content {
+  pointer-events: none;
+  overflow: hidden;
+  font-family: var(--font-source-serif-4), serif;
+  color: var(--on-surface);
+  line-height: 1.3;
+}
+.nusword-thumbnail-label {
+  font-family: var(--font-hanken-grotesk), sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--on-surface-variant);
+  text-align: center;
+  padding: 2px 0;
+}

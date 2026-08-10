@@ -73,3 +73,33 @@ Stage Summary:
 - Architecture: canonical document model (Tiptap JSON content + PageSettings JSON) stored in Prisma/SQLite, API routes with Zod validation, TanStack Query for server state, Zustand for UI state, debounced autosave hook.
 - Verified via Agent Browser: create document → editor loads → type text → heading insertion → outline updates → autosave persists to DB → version save → find/replace works → page size change (A4→A5) applies + persists → dashboard shows real documents with metadata.
 - Next phases: Phase 3 = deterministic pagination renderer; Phase 4 = PDF/DOCX/SVG/PNG export; Phase 5 = book engine; Phase 6 = kitab/RTL; Phase 8 = AI.
+
+---
+Task ID: 3
+Agent: main
+Task: Implement Phase 3 (Paper & Layout) — deterministic pagination engine, multi-page preview, headers/footers, page numbering, page thumbnails, page break support.
+
+Work Log:
+- Extended `src/types/document.ts` PageSettings with: `gutterMm` (binding gutter), `mirrorMargins` (book binding), `header`/`footer` (HeaderFooterConfig with enabled + left/center/right text slots), `pageNumberFormat` (decimal/roman/none), `pageNumberStart`, `differentFirstPage` (suppress header/footer on first page). Updated DEFAULT_PAGE_SETTINGS.
+- Wrote `src/lib/nusword/pagination.ts` — deterministic pagination engine (PURE function, no DOM): `paginateDocument()` takes Tiptap doc + block height measurements + content area height, returns PaginatedPage[] with blocks distributed across pages. Rules: explicit page breaks force new page, blocks that don't fit start new page, headings have keep-with-next (widow/orphan control), overflow blocks tracked as warnings. Also: `pageContentArea()` (computes px dimensions from mm settings), `formatPageNumber()` (decimal/roman), `resolveTemplate()` (replaces {{page}}/{{pages}}/{{title}}), MM_TO_PX / PT_TO_PX constants.
+- Wrote `src/components/nusword/editor/page-break.ts` — custom Tiptap block node for explicit page breaks. Renders as a visible dashed divider labelled "Page Break" in the editor; the pagination engine treats it as a hard page boundary. Added `setPageBreak` command.
+- Wrote `src/hooks/use-pagination.ts` — measurement + pagination hook: renders each top-level Tiptap block into a hidden measurement container (sized to exact page content width), measures offsetHeight + margins via DOM, passes measurements to `paginateDocument()`. Debounced via requestAnimationFrame. Re-measures on content/settings change and image load.
+- Wrote `src/components/nusword/editor/preview-canvas.tsx` — multi-page preview renderer: renders paginated document as stacked paper sheets, each with header (left/center/right slots with template variables resolved), content area (read-only HTML via generateHTML), footer (with page numbering). Shows layout warnings. Clicking a page sets it active.
+- Wrote `src/components/nusword/editor/page-thumbnails.tsx` — sidebar thumbnail panel: renders scaled-down mini previews of each paginated page with page number labels. Clicking a thumbnail switches to preview mode and navigates to that page. Shows page count + warning count.
+- Updated `src/stores/nusword-store.ts` — added `editorMode` ("edit" | "preview"), `activePageIndex`, and their setters. `openDocument` resets to edit mode + page 0.
+- Updated `src/components/nusword/editor-view.tsx`:
+  - EditorShell now runs usePagination hook, passes results to sidebar thumbnails + status bar + preview.
+  - EditorTopNav: added Edit/Preview segmented toggle (shows page count in Preview label).
+  - EditorLeftSidebar: Pages tab now renders PageThumbnails (replaces the old estimated-pages heuristic).
+  - EditorCanvas: accepts onMeasureNonce, re-measures pagination after images load (capture-phase load listener).
+  - EditorStatusBar: uses real totalPages from pagination (not estimated).
+  - LayoutPanel: added Gutter, Page Number Start, Page Number Format (decimal/roman/none), Different First Page toggle, Header editor (collapsible: enable toggle + left/center/right text fields with template variable hints), Footer editor (same).
+- Registered PageBreak extension in `nusword-editor.tsx` + added "Insert page break" toolbar button.
+- Added CSS in `globals.css`: page break node styling (dashed divider with label), preview page styling (paper shadow, header/footer absolute positioning), thumbnail styling (border, hover/active states, scaled content).
+- Bug fixes during verification: (1) useNuswordStore hooks called after early return in EditorShell — moved before the isLoading/isError guards. (2) React.useMemo called after early return in PageBlocks — moved before the conditional return.
+
+Stage Summary:
+- Phase 3 complete: deterministic pagination engine (pure function, independent of UI rendering per PRD §14), DOM-based block measurement, multi-page preview mode with headers/footers/page numbering, page thumbnails in sidebar, explicit page break node, gutter + page number format + different-first-page support.
+- Architecture: pagination engine is a pure function (testable, deterministic), measurement is a separate concern (DOM-based via hidden container), preview rendering uses generateHTML for read-only output. This separation satisfies PRD §14: "Keep pagination independent from UI rendering so exported output is deterministic."
+- Verified via Agent Browser: opened document → inserted 30 paragraphs → pagination computed 30 pages → preview mode rendered 30 stacked paper sheets with "1 / 30" ... "30 / 30" footers → sidebar showed 30 thumbnails → clicking thumbnail #5 navigated to page 5 → enabled header with "My Document Title" → header rendered on preview pages → inserted explicit page break → visible in editor.
+- Next phases: Phase 4 = PDF/DOCX/SVG/PNG export (the pagination engine now provides the deterministic page list needed for export); Phase 5 = book engine; Phase 6 = kitab/RTL.

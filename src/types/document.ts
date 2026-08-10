@@ -54,6 +54,10 @@ export interface PageSettings {
   marginRightMm: number;
   /** Print bleed in millimetres (PRD §14). */
   bleedMm: number;
+  /** Binding gutter in millimetres (added to inner margin). */
+  gutterMm: number;
+  /** Mirror margins for facing pages (book binding). */
+  mirrorMargins: boolean;
   /** Number of columns (PRD §14). */
   columns: number;
   languageDirection: LanguageDirection;
@@ -61,7 +65,35 @@ export interface PageSettings {
   fontFamily: string;
   fontSizePt: number;
   lineHeight: number;
+
+  /* --- Header / Footer (PRD §14: header/footer, page styles) --- */
+
+  /** Header configuration for each page. */
+  header: HeaderFooterConfig;
+  /** Footer configuration for each page. */
+  footer: HeaderFooterConfig;
+  /** Page number format (PRD §14: page numbering). */
+  pageNumberFormat: PageNumberFormat;
+  /** Starting page number (default 1). */
+  pageNumberStart: number;
+  /** Whether to suppress the header/footer on the first page (e.g. title page). */
+  differentFirstPage: boolean;
 }
+
+/** Header or footer slot configuration. Each slot can contain text with
+ *  template variables: {{page}}, {{pages}}, {{title}}. */
+export interface HeaderFooterConfig {
+  /** Whether the header/footer is visible. */
+  enabled: boolean;
+  /** Left-aligned text (supports {{page}}, {{pages}}, {{title}}). */
+  left: string;
+  /** Center-aligned text. */
+  center: string;
+  /** Right-aligned text. */
+  right: string;
+}
+
+export type PageNumberFormat = "decimal" | "roman" | "none";
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
   schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -72,11 +104,28 @@ export const DEFAULT_PAGE_SETTINGS: PageSettings = {
   marginLeftMm: 25.4,
   marginRightMm: 25.4,
   bleedMm: 0,
+  gutterMm: 0,
+  mirrorMargins: false,
   columns: 1,
   languageDirection: "ltr",
   fontFamily: "Source Serif 4",
   fontSizePt: 18,
   lineHeight: 1.6,
+  header: {
+    enabled: false,
+    left: "",
+    center: "",
+    right: "",
+  },
+  footer: {
+    enabled: true,
+    left: "",
+    center: "{{page}} / {{pages}}",
+    right: "",
+  },
+  pageNumberFormat: "decimal",
+  pageNumberStart: 1,
+  differentFirstPage: false,
 };
 
 /**

@@ -18,9 +18,12 @@ import * as React from "react";
 import { Icon } from "./icon";
 import { NuswordEditor, type NuswordEditorHandle } from "./editor/nusword-editor";
 import { FindReplace } from "./editor/find-replace";
+import { PreviewCanvas } from "./editor/preview-canvas";
+import { PageThumbnails } from "./editor/page-thumbnails";
 import { useNuswordStore } from "@/stores/nusword-store";
 import { useDocument, useDocumentVersions, useCreateVersion, useRestoreVersion } from "@/hooks/use-documents";
 import { useAutosave } from "@/hooks/use-autosave";
+import { usePagination } from "@/hooks/use-pagination";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -31,6 +34,7 @@ import {
   type PageSettings,
   type PaperSizeKey,
   type Orientation,
+  type HeaderFooterConfig,
 } from "@/types/document";
 import { extractOutline, countWordsInDoc, type OutlineEntry } from "@/lib/nusword/outline";
 import { absoluteDateTime } from "@/lib/nusword/time";
@@ -131,6 +135,21 @@ function EditorShell(props: EditorShellProps) {
   const outline = React.useMemo(() => extractOutline(content), [content]);
   const wordCount = React.useMemo(() => countWordsInDoc(content), [content]);
 
+  // Pagination — run the deterministic engine on the current content + settings.
+  const [measureNonce, setMeasureNonce] = React.useState(0);
+  const pagination = usePagination({
+    content,
+    settings,
+    measureNonce,
+  });
+
+  // Re-measure after images load (bump nonce).
+  React.useEffect(() => {
+    const handler = () => setMeasureNonce((n) => n + 1);
+    window.addEventListener("load", handler);
+    return () => window.removeEventListener("load", handler);
+  }, []);
+
   const isRtl = settings?.languageDirection === "rtl";
   const setRtl = (rtl: boolean) => {
     setSettings((s) =>
@@ -144,6 +163,11 @@ function EditorShell(props: EditorShellProps) {
     },
     [],
   );
+
+  const editorMode = useNuswordStore((s) => s.editorMode);
+  const setEditorMode = useNuswordStore((s) => s.setEditorMode);
+  const activePageIndex = useNuswordStore((s) => s.activePageIndex);
+  const setActivePageIndex = useNuswordStore((s) => s.setActivePageIndex);
 
   if (isLoading) {
     return <EditorLoading />;
@@ -175,24 +199,51 @@ function EditorShell(props: EditorShellProps) {
         onFlush={flush}
         onOpenMobileLeft={() => props.setMobileLeftOpen(true)}
         onOpenMobileRight={() => props.setMobileRightOpen(true)}
+        editorMode={editorMode}
+        onToggleMode={() =>
+          setEditorMode(editorMode === "edit" ? "preview" : "edit")
+        }
+        totalPages={pagination.totalPages}
       />
       <div className="relative flex flex-1 overflow-hidden">
         <EditorLeftSidebar
           outline={outline}
           wordCount={wordCount}
           onScrollToHeading={(id) => scrollToHeading(editorInstance, id)}
-        />
-        <EditorCanvas
-          documentId={documentId}
           content={content}
-          onChange={setContent}
           settings={settings}
-          title={title}
-          onTitleChange={setTitle}
-          editorRef={editorRef}
-          onReady={onReady}
-          editorInstance={editorInstance}
+          pagination={pagination}
+          activePageIndex={activePageIndex}
+          onPageClick={(idx) => {
+            setActivePageIndex(idx);
+            setEditorMode("preview");
+          }}
+          onSwitchToPreview={() => setEditorMode("preview")}
         />
+        {editorMode === "edit" ? (
+          <EditorCanvas
+            documentId={documentId}
+            content={content}
+            onChange={setContent}
+            settings={settings}
+            title={title}
+            onTitleChange={setTitle}
+            editorRef={editorRef}
+            onReady={onReady}
+            editorInstance={editorInstance}
+            onMeasureNonce={() => setMeasureNonce((n) => n + 1)}
+          />
+        ) : (
+          <PreviewCanvas
+            title={title}
+            content={content}
+            settings={settings}
+            pagination={pagination}
+            zoom={useNuswordStore.getState().zoom}
+            activePageIndex={activePageIndex}
+            onPageClick={setActivePageIndex}
+          />
+        )}
         <EditorRightSidebar
           settings={settings}
           onUpdateSettings={updateSettings}
@@ -218,6 +269,7 @@ function EditorShell(props: EditorShellProps) {
         wordCount={wordCount}
         isRtl={isRtl}
         onToggleRtl={() => setRtl(!isRtl)}
+        totalPages={pagination.totalPages}
       />
     </div>
   );
@@ -235,6 +287,9 @@ function EditorTopNav({
   onFlush,
   onOpenMobileLeft,
   onOpenMobileRight,
+  editorMode,
+  onToggleMode,
+  totalPages,
 }: {
   title: string;
   onTitleChange: (t: string) => void;
@@ -243,6 +298,9 @@ function EditorTopNav({
   onFlush: () => void;
   onOpenMobileLeft: () => void;
   onOpenMobileRight: () => void;
+  editorMode: "edit" | "preview";
+  onToggleMode: () => void;
+  totalPages: number;
 }) {
   const toggleFindReplace = useNuswordStore((s) => s.toggleFindReplace);
 
@@ -304,6 +362,38 @@ function EditorTopNav({
 
       {/* Right: actions */}
       <div className="flex shrink-0 items-center gap-2">
+        {/* Edit / Preview toggle */}
+        <div className="flex shrink-0 items-center rounded border border-outline-variant bg-surface-container-low p-0.5">
+          <button
+            type="button"
+            onClick={() => editorMode !== "edit" && onToggleMode()}
+            className={cn(
+              "flex cursor-pointer items-center gap-1 rounded px-2.5 py-1 text-label-ui-sm transition-colors",
+              editorMode === "edit"
+                ? "bg-surface-container-highest text-primary"
+                : "text-on-surface-variant hover:text-on-surface",
+            )}
+          >
+            <Icon name="edit" size={14} />
+            <span className="hidden sm:inline">Edit</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => editorMode !== "preview" && onToggleMode()}
+            className={cn(
+              "flex cursor-pointer items-center gap-1 rounded px-2.5 py-1 text-label-ui-sm transition-colors",
+              editorMode === "preview"
+                ? "bg-surface-container-highest text-primary"
+                : "text-on-surface-variant hover:text-on-surface",
+            )}
+          >
+            <Icon name="visibility" size={14} />
+            <span className="hidden sm:inline">Preview</span>
+            {totalPages > 0 && (
+              <span className="text-mono-ui text-outline">({totalPages})</span>
+            )}
+          </button>
+        </div>
         <button
           type="button"
           onClick={toggleFindReplace}
@@ -346,10 +436,22 @@ function EditorLeftSidebar({
   outline,
   wordCount,
   onScrollToHeading,
+  content,
+  settings,
+  pagination,
+  activePageIndex,
+  onPageClick,
+  onSwitchToPreview,
 }: {
   outline: OutlineEntry[];
   wordCount: number;
   onScrollToHeading: (id: string) => void;
+  content: JSONContent;
+  settings: PageSettings;
+  pagination: import("@/lib/nusword/pagination").PaginationResult;
+  activePageIndex: number;
+  onPageClick: (idx: number) => void;
+  onSwitchToPreview: () => void;
 }) {
   const tab = useNuswordStore((s) => s.editorSidebarTab);
   const setTab = useNuswordStore((s) => s.setEditorSidebarTab);
@@ -403,7 +505,14 @@ function EditorLeftSidebar({
         {tab === "outline" ? (
           <OutlinePanel outline={outline} onScrollToHeading={onScrollToHeading} />
         ) : tab === "pages" ? (
-          <PagesPanel wordCount={wordCount} />
+          <PageThumbnails
+            content={content}
+            settings={settings}
+            pagination={pagination}
+            activePageIndex={activePageIndex}
+            onPageClick={onPageClick}
+            onSwitchToPreview={onSwitchToPreview}
+          />
         ) : (
           <VersionsPanel />
         )}
@@ -479,28 +588,6 @@ function OutlinePanel({
         </button>
       ))}
     </nav>
-  );
-}
-
-function PagesPanel({ wordCount }: { wordCount: number }) {
-  // Phase 2: basic page estimation. ~300 words per A4 page (rough heuristic).
-  const estimatedPages = Math.max(1, Math.ceil(wordCount / 300));
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-outline-variant bg-surface-container-low p-4">
-        <div className="text-label-ui-sm text-on-surface-variant">Estimated pages</div>
-        <div className="text-headline-ui-lg mt-1 text-primary">{estimatedPages}</div>
-        <p className="text-label-ui-sm mt-1 text-outline">
-          Approx. 300 words/page. Precise pagination arrives in Phase 3.
-        </p>
-      </div>
-      <div className="rounded-lg border border-outline-variant bg-surface-container-low p-4">
-        <div className="text-label-ui-sm text-on-surface-variant">Total words</div>
-        <div className="text-headline-ui-lg mt-1 text-primary">
-          {wordCount.toLocaleString("id-ID")}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -628,6 +715,7 @@ function EditorCanvas({
   editorRef,
   onReady,
   editorInstance,
+  onMeasureNonce,
 }: {
   documentId: string;
   content: JSONContent;
@@ -638,6 +726,7 @@ function EditorCanvas({
   editorRef: React.RefObject<NuswordEditorHandle | null>;
   onReady: (editor: import("@tiptap/react").Editor | null) => void;
   editorInstance: import("@tiptap/react").Editor | null;
+  onMeasureNonce: () => void;
 }) {
   const zoom = useNuswordStore((s) => s.zoom);
   const showFindReplace = useNuswordStore((s) => s.showFindReplace);
@@ -645,6 +734,15 @@ function EditorCanvas({
 
   const { widthMm, heightMm } = resolvePaperDimensions(settings);
   const scale = zoom / 100;
+
+  // Re-measure pagination after images load inside the editor.
+  React.useEffect(() => {
+    const root = document.querySelector(".nusword-editor-root");
+    if (!root) return;
+    const handler = () => onMeasureNonce();
+    root.addEventListener("load", handler, true); // capture for img load events
+    return () => root.removeEventListener("load", handler, true);
+  }, [onMeasureNonce]);
 
   return (
     <main className="relative flex flex-1 flex-col items-center overflow-auto bg-surface-container-low px-4 py-10">
@@ -1014,6 +1112,76 @@ function LayoutPanel({
         />
       </Field>
 
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Gutter">
+          <MonoNumberInput
+            value={settings.gutterMm ?? 0}
+            suffix="mm"
+            step={1}
+            min={0}
+            onChange={(v) => onUpdate({ gutterMm: v })}
+          />
+        </Field>
+        <Field label="Page Number Start">
+          <MonoNumberInput
+            value={settings.pageNumberStart}
+            step={1}
+            min={0}
+            onChange={(v) => onUpdate({ pageNumberStart: v })}
+          />
+        </Field>
+      </div>
+
+      <Field label="Page Number Format">
+        <div className="flex gap-1">
+          {(["decimal", "roman", "none"] as const).map((fmt) => (
+            <button
+              key={fmt}
+              type="button"
+              onClick={() => onUpdate({ pageNumberFormat: fmt })}
+              className={cn(
+                "flex-1 cursor-pointer rounded border py-1.5 text-body-ui-md capitalize transition-colors",
+                settings.pageNumberFormat === fmt
+                  ? "border-primary bg-surface-container-lowest text-primary"
+                  : "border-outline-variant text-on-surface-variant hover:bg-surface-container-lowest",
+              )}
+            >
+              {fmt}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Different First Page">
+        <button
+          type="button"
+          onClick={() => onUpdate({ differentFirstPage: !settings.differentFirstPage })}
+          className={cn(
+            "flex w-full cursor-pointer items-center justify-between rounded border px-3 py-1.5 text-body-ui-md transition-colors",
+            settings.differentFirstPage
+              ? "border-primary bg-surface-container-high text-primary"
+              : "border-outline-variant text-on-surface-variant hover:bg-surface-container-low",
+          )}
+        >
+          <span className="flex items-center gap-2">
+            <Icon name="first_page" size={18} />
+            {settings.differentFirstPage ? "On" : "Off"}
+          </span>
+          <Icon name={settings.differentFirstPage ? "toggle_on" : "toggle_off"} size={20} />
+        </button>
+      </Field>
+
+      <HeaderFooterEditor
+        label="Header"
+        config={settings.header}
+        onChange={(header) => onUpdate({ header })}
+      />
+      <HeaderFooterEditor
+        label="Footer"
+        config={settings.footer}
+        onChange={(footer) => onUpdate({ footer })}
+      />
+
       <Field label="Direction">
         <button
           type="button"
@@ -1033,6 +1201,89 @@ function LayoutPanel({
         </button>
       </Field>
     </>
+  );
+}
+
+/* ================================================================
+   Header / Footer editor (3 text slots + enable toggle)
+   ================================================================ */
+
+function HeaderFooterEditor({
+  label,
+  config,
+  onChange,
+}: {
+  label: string;
+  config: HeaderFooterConfig;
+  onChange: (config: HeaderFooterConfig) => void;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  return (
+    <div className="rounded-lg border border-outline-variant">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full cursor-pointer items-center justify-between px-3 py-2 text-body-ui-md text-on-surface hover:bg-surface-container-low"
+      >
+        <span className="flex items-center gap-2">
+          <Icon name={label === "Header" ? "vertical_align_top" : "vertical_align_bottom"} size={16} />
+          {label}
+          {config.enabled && (
+            <span className="text-label-ui-sm text-outline">on</span>
+          )}
+        </span>
+        <Icon name={expanded ? "expand_less" : "expand_more"} size={18} />
+      </button>
+      {expanded && (
+        <div className="space-y-3 border-t border-outline-variant p-3">
+          <button
+            type="button"
+            onClick={() => onChange({ ...config, enabled: !config.enabled })}
+            className={cn(
+              "flex w-full cursor-pointer items-center justify-between rounded border px-3 py-1.5 text-body-ui-md transition-colors",
+              config.enabled
+                ? "border-primary bg-surface-container-high text-primary"
+                : "border-outline-variant text-on-surface-variant hover:bg-surface-container-low",
+            )}
+          >
+            <span>{config.enabled ? "Enabled" : "Disabled"}</span>
+            <Icon name={config.enabled ? "toggle_on" : "toggle_off"} size={20} />
+          </button>
+          <Field label="Left">
+            <input
+              type="text"
+              value={config.left}
+              onChange={(e) => onChange({ ...config, left: e.target.value })}
+              placeholder="Left text…"
+              className="h-8 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+            />
+          </Field>
+          <Field label="Center">
+            <input
+              type="text"
+              value={config.center}
+              onChange={(e) => onChange({ ...config, center: e.target.value })}
+              placeholder="{{page}} / {{pages}}"
+              className="h-8 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+            />
+          </Field>
+          <Field label="Right">
+            <input
+              type="text"
+              value={config.right}
+              onChange={(e) => onChange({ ...config, right: e.target.value })}
+              placeholder="Right text…"
+              className="h-8 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+            />
+          </Field>
+          <p className="text-label-ui-sm text-outline">
+            Variables: <code className="text-mono-ui text-primary">{"{{page}}"}</code>{" "}
+            <code className="text-mono-ui text-primary">{"{{pages}}"}</code>{" "}
+            <code className="text-mono-ui text-primary">{"{{title}}"}</code>
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1137,19 +1388,21 @@ function EditorStatusBar({
   wordCount,
   isRtl,
   onToggleRtl,
+  totalPages,
 }: {
   wordCount: number;
   isRtl: boolean;
   onToggleRtl: () => void;
+  totalPages: number;
 }) {
   const zoom = useNuswordStore((s) => s.zoom);
   const setZoom = useNuswordStore((s) => s.setZoom);
-  const estimatedPages = Math.max(1, Math.ceil(wordCount / 300));
+  const pages = Math.max(1, totalPages);
 
   return (
     <footer className="text-mono-ui z-50 flex h-statusbar-height w-full shrink-0 items-center justify-between border-t border-outline-variant bg-surface-container px-margin-mobile text-on-surface-variant md:px-4">
       <div className="flex items-center gap-2 md:gap-4">
-        <span>Page 1 of {estimatedPages}</span>
+        <span>Page 1 of {pages}</span>
         <span className="hidden size-1 rounded-full bg-outline-variant sm:block" />
         <span className="hidden sm:inline">
           {wordCount.toLocaleString("id-ID")} words

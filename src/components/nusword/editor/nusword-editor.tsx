@@ -27,6 +27,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import type { JSONContent } from "@tiptap/react";
+import { PageBreak } from "./page-break";
 import { Icon } from "../icon";
 import { cn } from "@/lib/utils";
 
@@ -97,6 +98,7 @@ export function NuswordEditor({
       TableRow,
       TableHeader,
       TableCell.configure({ width: "auto" }),
+      PageBreak,
     ],
     content: initialContent,
     editable,
@@ -379,6 +381,12 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
         label="Horizontal rule"
         icon="horizontal_rule"
         onClick={() => editor.chain().focus().setHorizontalRule().run()}
+      />
+      {/* Page break */}
+      <TbBtn
+        label="Insert page break"
+        icon="more_horiz"
+        onClick={() => editor.chain().focus().setPageBreak().run()}
       />
     </div>
   );
