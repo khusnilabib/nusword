@@ -103,3 +103,31 @@ Stage Summary:
 - Architecture: pagination engine is a pure function (testable, deterministic), measurement is a separate concern (DOM-based via hidden container), preview rendering uses generateHTML for read-only output. This separation satisfies PRD §14: "Keep pagination independent from UI rendering so exported output is deterministic."
 - Verified via Agent Browser: opened document → inserted 30 paragraphs → pagination computed 30 pages → preview mode rendered 30 stacked paper sheets with "1 / 30" ... "30 / 30" footers → sidebar showed 30 thumbnails → clicking thumbnail #5 navigated to page 5 → enabled header with "My Document Title" → header rendered on preview pages → inserted explicit page break → visible in editor.
 - Next phases: Phase 4 = PDF/DOCX/SVG/PNG export (the pagination engine now provides the deterministic page list needed for export); Phase 5 = book engine; Phase 6 = kitab/RTL.
+
+---
+Task ID: 4
+Agent: main
+Task: Implement Phase 4 (Export) — PDF/DOCX/HTML export, export job system, preflight checks, print presets, download.
+
+Work Log:
+- Installed `pdfkit` (PDF generation) and `docx` (DOCX generation) npm packages.
+- Added `ExportJob` model to Prisma schema: id, documentId, format, preset, status (pending/processing/completed/failed), artifactPath, artifactSize, checksum (SHA-256), preflightReport (JSON), errorMessage, createdAt, completedAt, expiresAt (7-day retention). Ran `db:push`.
+- Wrote `src/lib/nusword/preflight.ts` — preflight checker: runs before export to detect empty content, overflow, blank pages, margin/bleed issues, font size warnings, page count info. Returns structured PreflightReport with severity levels (info/warning/error) + summary.
+- Wrote `src/lib/nusword/export/presets.ts` — export format definitions (PDF/DOCX/HTML with icons, extensions, MIME types) + print presets (Screen PDF 72 DPI, Standard Print 150 DPI, High Quality Print 300 DPI, Booklet, Custom) with imageQuality, embedFonts, includeBleed, dpi settings.
+- Wrote `src/lib/nusword/export/pdf.ts` — PDF generation via pdfkit: creates multi-page PDF from paginated content. Each page gets correct dimensions (mm→pt), margins, header (left/center/right with template variables), content blocks (headings, paragraphs, lists, blockquotes, code blocks, horizontal rules, images, tables), footer (page numbers). Uses Helvetica built-in font.
+- Wrote `src/lib/nusword/export/docx.ts` — DOCX generation via `docx` package: converts Tiptap JSON to DOCX structure. Maps heading levels, paragraphs (with bold/italic/underline/strike/code marks), bullet/numbered lists, blockquotes (with left border), code blocks (with shading), horizontal rules, page breaks, images (base64), tables (with header rows). Sets page size + margins from settings.
+- Wrote `src/lib/nusword/export/html.ts` — standalone HTML export: generates complete HTML document with @page CSS rules for page size/margins, inline CSS for all block types, header/footer slots with template variables, paginated page sections. Print-ready (can be printed to PDF from any browser).
+- Wrote API routes:
+  - `POST /api/documents/[id]/export` — creates export job, runs preflight, generates artifact (PDF/DOCX/HTML), writes to disk, computes SHA-256 checksum, returns job + download URL + preflight report.
+  - `GET /api/documents/[id]/export` — lists recent export jobs for a document.
+  - `GET /api/export-jobs/[id]/download` — serves the artifact file with correct Content-Type + Content-Disposition headers.
+- Wrote `src/components/nusword/export-dialog.tsx` — export dialog UI: format selection (PDF/DOCX/HTML cards), print preset selection (for PDF), preflight summary (issues with severity icons), export button (shows "Exporting…" spinner), export result (success banner with file size + download button), recent exports history (with download links + error states). Uses shadcn Dialog component.
+- Wired Export button in editor top nav to open the ExportDialog, passing documentId, title, content, settings, and pagination data.
+- Added `serverExternalPackages: ["pdfkit", "docx"]` to `next.config.ts` — these packages use fs/path at runtime and must not be bundled by Turbopack (their __dirname resolution breaks otherwise, causing ENOENT errors for pdfkit's font data files).
+- Bug fix during verification: pdfkit's built-in font path resolution broke under Turbopack bundling (`ENOENT: no such file or directory, open '/ROOT/node_modules/pdfkit/js/data/Helvetica.afm'`). Fixed by adding pdfkit + docx to `serverExternalPackages` in next.config.ts so they run as native Node.js modules.
+
+Stage Summary:
+- Phase 4 complete: PDF/DOCX/HTML export with preflight, print presets, export job tracking (status, checksum, retention), download, and export history.
+- Architecture: client sends paginated page list (from Phase 3 pagination engine) to server → server runs preflight → generates artifact → writes to disk → returns download URL. This satisfies PRD §14 (deterministic pagination independent of UI) and §16 (export creates a job with progress, artifact metadata, checksum, retention).
+- Verified via Agent Browser + curl: PDF export (44.7 KB, valid PDF v1.3), DOCX export (8.8 KB), HTML export (2.9 KB). Download route serves files with correct MIME types. Export dialog shows preflight summary, export result with download button, and recent exports history.
+- Next phases: Phase 5 = book engine (chapters, front/back matter, TOC, mirror margins, running headers, booklet/imposition); Phase 6 = kitab/RTL; Phase 8 = AI.

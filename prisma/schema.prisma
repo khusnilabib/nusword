@@ -34,7 +34,8 @@ model Document {
   /// Soft-delete: documents go to trash before permanent deletion (PRD §25).
   deletedAt DateTime?
 
-  versions DocumentVersion[]
+  versions  DocumentVersion[]
+  exportJobs ExportJob[]
 
   @@index([deletedAt])
   @@index([updatedAt])
@@ -58,4 +59,36 @@ model DocumentVersion {
 
   @@unique([documentId, version])
   @@index([documentId])
+}
+
+/// Export job — tracks PDF/DOCX/HTML/SVG/PNG generation (PRD §16).
+/// Every export creates a job with progress state, artifact metadata,
+/// checksum and retention policy.
+model ExportJob {
+  id           String   @id @default(cuid())
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// Output format: "pdf" | "docx" | "html" | "svg" | "png"
+  format       String
+  /// Print preset: "screen" | "standard" | "highquality" | "booklet" | "custom"
+  preset       String   @default("standard")
+  /// Job status: "pending" | "processing" | "completed" | "failed"
+  status       String   @default("pending")
+  /// Path to the generated artifact file (relative to exports dir).
+  artifactPath String?
+  /// File size in bytes.
+  artifactSize Int?
+  /// SHA-256 checksum of the artifact.
+  checksum     String?
+  /// JSON-stringified preflight report (PRD §16: preflight before print).
+  preflightReport String?
+  /// Error message if status === "failed".
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+  /// Retention: when the artifact expires and can be deleted (PRD §25).
+  expiresAt    DateTime?
+
+  @@index([documentId])
+  @@index([status])
 }

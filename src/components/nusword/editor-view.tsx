@@ -20,6 +20,7 @@ import { NuswordEditor, type NuswordEditorHandle } from "./editor/nusword-editor
 import { FindReplace } from "./editor/find-replace";
 import { PreviewCanvas } from "./editor/preview-canvas";
 import { PageThumbnails } from "./editor/page-thumbnails";
+import { ExportDialog } from "./export-dialog";
 import { useNuswordStore } from "@/stores/nusword-store";
 import { useDocument, useDocumentVersions, useCreateVersion, useRestoreVersion } from "@/hooks/use-documents";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -98,6 +99,7 @@ function EditorShell(props: EditorShellProps) {
   const [content, setContent] = React.useState<JSONContent | null>(null);
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
 
   // Editor instance — stored in state (not ref) so FindReplace can read it
   // during render without violating the "no ref access during render" rule.
@@ -204,6 +206,7 @@ function EditorShell(props: EditorShellProps) {
           setEditorMode(editorMode === "edit" ? "preview" : "edit")
         }
         totalPages={pagination.totalPages}
+        onExport={() => setExportOpen(true)}
       />
       <div className="relative flex flex-1 overflow-hidden">
         <EditorLeftSidebar
@@ -271,6 +274,15 @@ function EditorShell(props: EditorShellProps) {
         onToggleRtl={() => setRtl(!isRtl)}
         totalPages={pagination.totalPages}
       />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        documentId={documentId}
+        title={title}
+        content={content}
+        settings={settings}
+        pagination={pagination}
+      />
     </div>
   );
 }
@@ -290,6 +302,7 @@ function EditorTopNav({
   editorMode,
   onToggleMode,
   totalPages,
+  onExport,
 }: {
   title: string;
   onTitleChange: (t: string) => void;
@@ -301,6 +314,7 @@ function EditorTopNav({
   editorMode: "edit" | "preview";
   onToggleMode: () => void;
   totalPages: number;
+  onExport: () => void;
 }) {
   const toggleFindReplace = useNuswordStore((s) => s.toggleFindReplace);
 
@@ -419,6 +433,7 @@ function EditorTopNav({
         </button>
         <button
           type="button"
+          onClick={onExport}
           className="cursor-pointer rounded bg-primary px-3 py-1.5 text-body-ui-md text-on-primary transition-colors duration-200 hover:bg-primary-container sm:px-4"
         >
           Export

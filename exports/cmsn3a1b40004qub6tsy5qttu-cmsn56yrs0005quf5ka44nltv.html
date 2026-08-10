@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Test Document</title>
+<style>
+  @page {
+    size: 148mm 210mm;
+    margin: 25.4mm 25.4mm 25.4mm 25.4mm;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: #e2e7ff;
+    font-family: 'Source Serif 4', Georgia, serif;
+    color: #131b2e;
+  }
+  .nw-page {
+    position: relative;
+    width: 148mm;
+    min-height: 210mm;
+    margin: 0 auto 24px;
+    padding: 25.4mm 25.4mm 25.4mm 25.4mm;
+    background: white;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    page-break-after: always;
+  }
+  .nw-page:last-child { page-break-after: auto; }
+  .nw-page-header, .nw-page-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Hanken Grotesk', sans-serif;
+    font-size: 10px;
+    color: #717878;
+    height: 20px;
+  }
+  .nw-page-header { margin-bottom: 8px; }
+  .nw-page-footer { margin-top: 8px; }
+  .nw-page-header span, .nw-page-footer span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .nw-page-header span:nth-child(2),
+  .nw-page-footer span:nth-child(2) { text-align: center; }
+  .nw-page-header span:nth-child(3),
+  .nw-page-footer span:nth-child(3) { text-align: right; }
+  .nw-page-content {
+    font-size: 18pt;
+    line-height: 1.6;
+  }
+  .nw-page-content h1 { font-size: 36px; font-weight: 700; margin: 0.5em 0 0.3em; }
+  .nw-page-content h2 { font-size: 24px; font-weight: 700; margin: 1.2em 0 0.3em; }
+  .nw-page-content h3 { font-size: 20px; font-weight: 600; margin: 1em 0 0.3em; }
+  .nw-page-content p { margin: 0 0 0.5em; }
+  .nw-page-content ul, .nw-page-content ol { padding-left: 1.5em; }
+  .nw-page-content blockquote { border-left: 2px solid #c1c8c7; padding-left: 1em; margin: 0; color: #414848; font-style: italic; }
+  .nw-page-content pre { background: #eaedff; padding: 0.75em 1em; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 14px; overflow-x: auto; }
+  .nw-page-content table { border-collapse: collapse; width: 100%; }
+  .nw-page-content th, .nw-page-content td { border: 1px solid #c1c8c7; padding: 0.4em 0.6em; }
+  .nw-page-content th { background: #f2f3ff; font-weight: 600; }
+  .nw-page-content img { max-width: 100%; height: auto; }
+  .nw-page-content a { color: #012425; text-decoration: underline; }
+  @media print {
+    body { background: white; }
+    .nw-page { box-shadow: none; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<section class="nw-page">
+        <div class="nw-page-header">
+             <span></span>
+             <span>My Document Title</span>
+             <span></span>
+           </div>
+        <div class="nw-page-content"></div>
+        <div class="nw-page-footer">
+             <span></span>
+             <span>1 / 1</span>
+             <span></span>
+           </div>
+      </section>
+</body>
+</html>
