@@ -92,3 +92,53 @@ model ExportJob {
   @@index([documentId])
   @@index([status])
 }
+
+/// Book — a collection of chapters with front/back matter, trim size,
+/// binding intent, and print profile (PRD §15: Book & Kitab Architecture).
+/// A Book owns metadata, chapter references, and book-specific page settings.
+model Book {
+  id          String   @id @default(cuid())
+  title       String   @default("Untitled Book")
+  subtitle    String?
+  author      String?
+  /// Book-specific settings (JSON): trimSize, binding, mirrorMargins, runningHeaders, etc.
+  settings    String   @default("{}")
+  /// Front matter config (JSON): array of {type, title, content} entries.
+  frontMatter String   @default("[]")
+  /// Back matter config (JSON): array of {type, title, content} entries.
+  backMatter  String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  chapters BookChapter[]
+
+  @@index([deletedAt])
+  @@index([updatedAt])
+}
+
+/// BookChapter — a chapter in a book's chapter tree (PRD §15: nested chapters
+/// and ordering). Each chapter references a Document (the chapter content).
+model BookChapter {
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// The document containing this chapter's content.
+  documentId String?
+  /// Chapter title (may differ from document title).
+  title      String   @default("Untitled Chapter")
+  /// Sort order within the parent (0-based).
+  sortOrder  Int      @default(0)
+  /// Parent chapter id (null = top-level chapter). Enables nested chapters.
+  parentId   String?
+  /// Whether this chapter starts on a new page (default true for books).
+  startNewPage Boolean @default(true)
+  /// Whether to include this chapter in the TOC.
+  includeInToc Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookId])
+  @@index([parentId])
+  @@index([sortOrder])
+}

@@ -18,6 +18,7 @@ import {
   useCreateDocument,
   useDeleteDocument,
 } from "@/hooks/use-documents";
+import { useBooks, useCreateBook } from "@/hooks/use-books";
 import { relativeTime } from "@/lib/nusword/time";
 import { toast } from "sonner";
 
@@ -46,9 +47,12 @@ function greetingForHour(h: number): string {
 
 export function DashboardView() {
   const openDocument = useNuswordStore((s) => s.openDocument);
+  const openBook = useNuswordStore((s) => s.openBook);
   const createMutation = useCreateDocument();
   const deleteMutation = useDeleteDocument();
   const { data: documents = [], isLoading } = useDocuments();
+  const createBookMutation = useCreateBook();
+  const { data: books = [] } = useBooks();
   const [activeNav, setActiveNav] = React.useState("recent");
   const [search, setSearch] = React.useState("");
 
@@ -66,6 +70,18 @@ export function DashboardView() {
           openDocument(doc.id, doc.title);
         },
         onError: () => toast.error("Failed to create document"),
+      },
+    );
+  };
+
+  const handleNewBook = () => {
+    createBookMutation.mutate(
+      { title: "Untitled Book" },
+      {
+        onSuccess: (book) => {
+          openBook(book.id, book.title);
+        },
+        onError: () => toast.error("Failed to create book"),
       },
     );
   };
@@ -180,6 +196,67 @@ export function DashboardView() {
                 </p>
               </div>
             )}
+
+            {/* Books section */}
+            <div className="mt-12">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-label-ui-sm flex items-center gap-2 uppercase tracking-wider text-on-surface-variant">
+                  <Icon name="menu_book" size={16} />
+                  Books
+                  {books.length > 0 && (
+                    <span className="text-outline">{books.length}</span>
+                  )}
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {/* New Book card */}
+                <button
+                  type="button"
+                  onClick={handleNewBook}
+                  disabled={createBookMutation.isPending}
+                  className="group flex h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-outline-variant bg-surface p-6 text-center transition-all hover:border-primary hover:bg-surface-container-low disabled:cursor-wait disabled:opacity-50"
+                >
+                  <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-primary-container text-on-primary-container transition-transform group-hover:scale-110">
+                    <Icon name={createBookMutation.isPending ? "progress_activity" : "menu_book"} size={24} />
+                  </div>
+                  <span className="text-headline-ui-md mb-1 text-primary">
+                    {createBookMutation.isPending ? "Creating…" : "New Book"}
+                  </span>
+                  <span className="text-body-ui-md text-sm text-on-surface-variant">
+                    Chapters, front matter, imposition
+                  </span>
+                </button>
+
+                {/* Book cards */}
+                {books.map((book) => (
+                  <button
+                    key={book.id}
+                    type="button"
+                    onClick={() => openBook(book.id, book.title)}
+                    className="group flex h-48 cursor-pointer flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface transition-all hover:border-outline hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
+                  >
+                    <div className="flex h-28 items-center justify-center overflow-hidden border-b border-outline-variant/50 bg-surface-container-low p-4">
+                      <Icon name="auto_stories" size={48} className="text-primary/40 transition-colors group-hover:text-primary/60" />
+                    </div>
+                    <div className="flex flex-1 flex-col justify-between p-4">
+                      <h3 className="text-headline-ui-md truncate text-on-surface">
+                        {book.title}
+                      </h3>
+                      <div className="mt-1 flex items-center justify-between">
+                        <span className="text-label-ui-sm flex items-center gap-1 text-on-surface-variant">
+                          <Icon name="format_list_numbered" size={14} />
+                          {book.chapterCount} chapters
+                        </span>
+                        <span className="text-label-ui-sm text-outline">
+                          {relativeTime(book.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </main>
       </div>

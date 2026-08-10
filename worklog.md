@@ -131,3 +131,38 @@ Stage Summary:
 - Architecture: client sends paginated page list (from Phase 3 pagination engine) to server → server runs preflight → generates artifact → writes to disk → returns download URL. This satisfies PRD §14 (deterministic pagination independent of UI) and §16 (export creates a job with progress, artifact metadata, checksum, retention).
 - Verified via Agent Browser + curl: PDF export (44.7 KB, valid PDF v1.3), DOCX export (8.8 KB), HTML export (2.9 KB). Download route serves files with correct MIME types. Export dialog shows preflight summary, export result with download button, and recent exports history.
 - Next phases: Phase 5 = book engine (chapters, front/back matter, TOC, mirror margins, running headers, booklet/imposition); Phase 6 = kitab/RTL; Phase 8 = AI.
+
+---
+Task ID: 5
+Agent: main
+Task: Implement Phase 5 (Book Engine) — chapters, front/back matter, TOC, mirror margins, running headers, book profiles, booklet/imposition.
+
+Work Log:
+- Added `Book` and `BookChapter` models to Prisma schema: Book (title, subtitle, author, settings JSON, frontMatter JSON, backMatter JSON, soft-delete) + BookChapter (bookId, documentId, title, sortOrder, parentId for nesting, startNewPage, includeInToc). Ran `db:push`.
+- Wrote `src/types/book.ts` — BookSettings (extends PageSettings with binding, mirrorMargins, runningHeader, runningFooter, chaptersStartOnOddPage, booklet config), ChapterNode (nested tree with level + children), BookMatterEntry (front/back matter with type + enabled toggle), NuswordBook DTO, BINDING_TYPES (perfect/saddle/case/spiral), FRONT_MATTER_TYPES (cover/title-page/copyright/dedication/preface/toc), BACK_MATTER_TYPES (appendix/glossary/references/index/colophon), DEFAULT_BOOK_SETTINGS (A5 trim, 12pt, mirror margins on, running headers on).
+- Wrote `src/lib/nusword/imposition.ts` — booklet imposition calculator: `calculateBookletImposition()` takes page count + sheets per signature, pads to multiple of 4, calculates sheet signatures and page ordering for saddle-stitch binding (front: [high, low], back: [lowBack, highBack]). `imposePages()` reorders a page list for 2-up printing. `getFacingPage()` returns the facing page number.
+- Wrote `src/lib/nusword/toc.ts` — TOC generator: `generateToc()` walks chapter tree, extracts headings from each chapter's Tiptap content, resolves page numbers from a chapterPageMap, returns TocEntry[] with level + title + pageNumber + isChapter. `tocToTiptapJson()` renders TOC as Tiptap document (title + dot-leader paragraphs).
+- Wrote `src/lib/nusword/book-serialize.ts` — parseBookSettings() (merges defaults), parseMatterEntries(), buildChapterTree() (flat → nested via parentId), toBookDto() Prisma→DTO converter.
+- Wrote API routes:
+  - `GET/POST /api/books` — list books (summary with chapterCount), create book.
+  - `GET/PATCH/DELETE /api/books/[id]` — get book with chapter tree, update title/subtitle/author/settings/frontMatter/backMatter, soft-delete.
+  - `GET/POST/PUT /api/books/[id]/chapters` — list chapters as tree, create chapter (auto-creates a Document for the chapter content), bulk reorder (PUT with sortOrder + parentId).
+  - `PATCH/DELETE /api/books/[id]/chapters/[chapterId]` — update chapter title/startNewPage/includeInToc, delete chapter.
+  - `GET /api/books/[id]/toc` — generate TOC from chapter tree + document contents.
+- Wrote `src/hooks/use-books.ts` — TanStack Query hooks: useBooks (list), useBook (single), useCreateBook, useDeleteBook, useUpdateBook, useCreateChapter, useUpdateChapter, useDeleteChapter, useReorderChapters, useBookToc.
+- Updated `src/stores/nusword-store.ts` — added `view: "dashboard" | "editor" | "book"`, activeBookId, activeBookTitle, activeChapterId, bookSidebarTab ("chapters" | "front-matter" | "back-matter" | "settings"), openBook() action.
+- Wrote `src/components/nusword/book-view.tsx` — full book editor:
+  - Top nav: back + book title + author + chapter count + Export Book button.
+  - Left sidebar with 4 tabs: Chapters (tree with add/delete/select), Front Matter (toggle sections on/off + add new), Back Matter (same), Settings (binding/trim/mirror/running-header/booklet summary).
+  - Center: ChapterEditor (loads chapter's document into Tiptap with autosave) or BookConfigPanel (front/back matter list + TOC preview) or BookSettingsEditor (metadata, binding selection, page layout with mirror margins + chapters-start-on-odd toggle, running header config, booklet imposition config with sheets/signature calculator).
+  - ChapterTree with nested children, expand/collapse, delete with confirmation.
+  - MatterPanel with enable/disable toggles + add section buttons.
+  - TocPreview showing generated TOC with dot leaders + page numbers.
+- Updated `src/components/nusword/dashboard-view.tsx` — added "Books" section below documents: New Book card + book cards showing title/chapterCount/updatedAt. Clicking a book opens the book view.
+- Updated `src/app/page.tsx` — three views: dashboard, editor, book (driven by Zustand store).
+
+Stage Summary:
+- Phase 5 complete: Book engine with chapter tree (nested, ordered), front/back matter (6 front types + 5 back types with enable toggles), mirror margins (facing pages for book binding), running headers (chapter/book/custom source), chapters-start-on-odd-page, booklet imposition calculator (saddle-stitch sheet signatures + page ordering), TOC generator (auto-builds from chapters + headings with page numbers), book settings editor (binding selection with 4 types, trim size, margins, typography).
+- Architecture: Book owns metadata + chapter references + book-specific settings. Each chapter references a Document (the chapter content). Front/back matter stored as JSON arrays. Imposition is a separate pure function module (PRD §15: "Imposition must be a separate service/module from document editing").
+- Verified via Agent Browser: dashboard shows Books section with New Book card → created book → book editor opened with chapter tree sidebar → added chapter → chapter editor loaded Tiptap with autosave → settings panel shows binding options (4 types) → selecting Saddle Stitch revealed booklet imposition section → front matter panel shows all 6 section types → added Cover section → TOC preview shows "Chapter 1".
+- Next phases: Phase 6 = kitab/RTL (Arabic typography, bilingual blocks, footnotes, ornaments); Phase 8 = AI.

@@ -1,18 +1,17 @@
 /**
  * NUSWORD UI store — client state for the workspace shell.
  *
- * Phase 2: now tracks the active document ID (server state lives in TanStack
- * Query). The store holds UI-only concerns: which view, which doc is open,
- * sidebar/properties tabs, zoom, RTL, mobile overlay open states, and the
- * find/replace panel visibility.
+ * Phase 5: now supports a "book" view alongside "dashboard" and "editor".
+ * The book view shows the chapter tree, front/back matter, and book settings.
  */
 import { create } from "zustand";
 
-export type NuswordView = "dashboard" | "editor";
+export type NuswordView = "dashboard" | "editor" | "book";
 export type EditorMode = "edit" | "preview";
 
 export type EditorSidebarTab = "outline" | "pages" | "versions";
 export type EditorPropertiesTab = "typography" | "layout";
+export type BookSidebarTab = "chapters" | "front-matter" | "back-matter" | "settings";
 
 interface NuswordUiState {
   view: NuswordView;
@@ -20,24 +19,30 @@ interface NuswordUiState {
   activeDocumentId: string | null;
   /** Cache of the active doc title for the top nav (updated from query data). */
   activeDocTitle: string;
+  /** The book currently open in the book view (null on dashboard). */
+  activeBookId: string | null;
+  activeBookTitle: string;
+  /** Active chapter being edited within the book view. */
+  activeChapterId: string | null;
   /** Edit vs Preview mode within the editor (PRD §3: preview). */
   editorMode: EditorMode;
   editorSidebarTab: EditorSidebarTab;
   editorPropertiesTab: EditorPropertiesTab;
+  bookSidebarTab: BookSidebarTab;
   isRtl: boolean;
   zoom: number;
-  /** Mobile-only: left (navigation) sidebar overlay open state */
   mobileLeftOpen: boolean;
-  /** Mobile-only: right (properties) sidebar overlay open state */
   mobileRightOpen: boolean;
-  /** Find & replace panel visibility */
   showFindReplace: boolean;
-  /** Active page in preview/thumbnails (0-based). */
   activePageIndex: number;
 
   openDocument: (id: string, title?: string) => void;
   setActiveDocTitle: (title: string) => void;
   setEditorMode: (mode: EditorMode) => void;
+  openBook: (id: string, title?: string) => void;
+  setActiveBookTitle: (title: string) => void;
+  setActiveChapterId: (id: string | null) => void;
+  setBookSidebarTab: (tab: BookSidebarTab) => void;
   exitToDashboard: () => void;
   setEditorSidebarTab: (tab: EditorSidebarTab) => void;
   setEditorPropertiesTab: (tab: EditorPropertiesTab) => void;
@@ -55,9 +60,13 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
   view: "dashboard",
   activeDocumentId: null,
   activeDocTitle: "Untitled",
+  activeBookId: null,
+  activeBookTitle: "Untitled Book",
+  activeChapterId: null,
   editorMode: "edit",
   editorSidebarTab: "outline",
   editorPropertiesTab: "typography",
+  bookSidebarTab: "chapters",
   isRtl: false,
   zoom: 100,
   mobileLeftOpen: false,
@@ -78,10 +87,25 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
     }),
   setActiveDocTitle: (activeDocTitle) => set({ activeDocTitle }),
   setEditorMode: (editorMode) => set({ editorMode }),
+  openBook: (id, title) =>
+    set({
+      view: "book",
+      activeBookId: id,
+      activeBookTitle: title ?? "Untitled Book",
+      activeChapterId: null,
+      bookSidebarTab: "chapters",
+      mobileLeftOpen: false,
+      mobileRightOpen: false,
+    }),
+  setActiveBookTitle: (activeBookTitle) => set({ activeBookTitle }),
+  setActiveChapterId: (activeChapterId) => set({ activeChapterId }),
+  setBookSidebarTab: (bookSidebarTab) => set({ bookSidebarTab }),
   exitToDashboard: () =>
     set({
       view: "dashboard",
       activeDocumentId: null,
+      activeBookId: null,
+      activeChapterId: null,
       editorMode: "edit",
       mobileLeftOpen: false,
       mobileRightOpen: false,
