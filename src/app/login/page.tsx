@@ -11,8 +11,29 @@ import { useAuth } from "@/components/providers/auth-provider";
  *
  * Uses Supabase Auth (via AuthProvider). Falls back to dev mode
  * (auto-login) if Supabase is not configured.
+ *
+ * NOTE: useSearchParams() must be wrapped in <Suspense> for static
+ * prerendering (Next.js build requirement).
  */
 export default function LoginPage() {
+  return (
+    <React.Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </React.Suspense>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="min-h-screen flex flex-col bg-surface-container-lowest">
+      <div className="flex flex-1 items-center justify-center">
+        <div className="text-body-ui-md text-on-surface-variant">Loading…</div>
+      </div>
+    </div>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signIn, isDevMode } = useAuth();
