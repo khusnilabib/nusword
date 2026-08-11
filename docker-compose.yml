@@ -1,0 +1,25 @@
+# NUSWORD Local Development Database
+#
+# Quick start:
+#   docker compose up -d
+#   bun run db:push
+#
+# This creates a local PostgreSQL database on port 5432.
+# The app connects to it via DATABASE_URL in .env
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nusword-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: nusword
+      POSTGRES_PASSWORD: nusword
+      POSTGRES_DB: nusword
+    volumes:
+      - nusword-db-data:/var/lib/postgresql/data
+
+volumes:
+  nusword-db-data:
