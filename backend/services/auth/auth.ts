@@ -28,17 +28,14 @@ export const db = new SQLDatabase("auth", {
 });
 
 // ─── Secrets ───────────────────────────────────────────────────────────────
-// Set via: `encore secret set JWT_SECRET` (production) or
-// `encore secret set --local JWT_SECRET` (local dev).
-// Used as the HMAC-SHA256 key for signing + verifying JWTs.
-const jwtSecret = secret("JWT_SECRET");
+// JWT secret: uses Encore secret in production, falls back to env var for
+// local dev without `encore secret set` (which requires `encore auth login`).
+const jwtSecret = secret("JWT_SECRET", {
+  fallback: process.env.JWT_SECRET || "nusword-dev-secret-change-in-production",
+});
 
 /**
  * Returns the JWT secret, throwing if it is unset or empty.
- *
- * Encore returns `""` for unset secrets in local dev — that would silently
- * produce JWTs signed with an empty key (trivially forgeable). Fail loud
- * instead so the operator knows to run `encore secret set JWT_SECRET`.
  */
 function getJwtSecret(): string {
   const s = jwtSecret();

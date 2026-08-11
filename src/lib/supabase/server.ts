@@ -117,13 +117,25 @@ export const DEV_FALLBACK_EMAIL = "user@nusword.local";
 
 /**
  * Get the current user's email, with a dev fallback.
- * If Supabase is configured and user is authenticated, returns their email.
- * If Supabase is not configured, returns the dev fallback.
- * If Supabase is configured but user is not authenticated, returns null.
+ *
+ * Phase 9: now uses JWT cookie auth (via /lib/auth/server) instead of
+ * Supabase. This function is kept for backward compatibility — all
+ * existing API routes import it.
+ *
+ * - If user is authenticated via JWT cookie, returns their email.
+ * - If in dev mode (no JWT_SECRET or default), returns dev fallback.
+ * - In production without auth, returns null (causes 401).
  */
 export async function getAuthEmailOrFallback(): Promise<string | null> {
-  if (!isSupabaseConfigured()) {
+  // Import dynamically to avoid circular dependency in edge/middleware.
+  const { getAuthUser, isDevMode } = await import("@/lib/auth/server");
+
+  const user = await getAuthUser();
+  if (user) return user.email;
+
+  if (isDevMode()) {
     return DEV_FALLBACK_EMAIL;
   }
-  return getAuthEmail();
+
+  return null;
 }

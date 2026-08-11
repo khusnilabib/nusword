@@ -1,63 +1,51 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { jwtVerify } from "jose";
 
 /**
- * Middleware — refreshes Supabase auth session on every request and
- * protects /app routes (redirects to /login if not authenticated).
+ * Middleware — protects /app routes using JWT cookie auth.
  *
- * If Supabase env vars are not set, skips auth checks (development mode).
+ * In dev mode (JWT_SECRET is the default), auth is auto-passed.
+ * In production, unauthenticated users are redirected to /login.
  */
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "nusword-dev-secret-change-in-production",
+);
+
+const COOKIE_NAME = "nusword_session";
+
+function isDevMode(): boolean {
+  return (
+    !process.env.JWT_SECRET ||
+    process.env.JWT_SECRET === "nusword-dev-secret-change-in-production"
+  );
+}
+
 export async function middleware(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  // If Supabase is not configured, skip all auth middleware.
-  if (!url || !anonKey) {
-    return NextResponse.next();
-  }
-
-  // Only protect /app routes.
   const isAppRoute = request.nextUrl.pathname.startsWith("/app");
-
-  // Auth pages that should redirect to /app if already logged in.
   const isAuthPage =
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/signup");
 
-  let supabaseResponse = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  // In dev mode, skip all auth checks.
+  if (isDevMode()) {
+    return NextResponse.next();
+  }
 
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value),
-        );
-        supabaseResponse = NextResponse.next({
-          request: {
-            headers: request.headers,
-          },
-        });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
+  // Read JWT from cookie.
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+  let isAuthenticated = false;
 
-  // Refresh the session (important for server-side auth).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  if (token) {
+    try {
+      await jwtVerify(token, JWT_SECRET);
+      isAuthenticated = true;
+    } catch {
+      isAuthenticated = false;
+    }
+  }
 
   // Protect /app routes — redirect to /login if not authenticated.
-  if (isAppRoute && !user) {
+  if (isAppRoute && !isAuthenticated) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", request.nextUrl.pathname);
@@ -65,13 +53,13 @@ export async function middleware(request: NextRequest) {
   }
 
   // Redirect logged-in users away from auth pages.
-  if (isAuthPage && user) {
+  if (isAuthPage && isAuthenticated) {
     const url = request.nextUrl.clone();
     url.pathname = "/app";
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {

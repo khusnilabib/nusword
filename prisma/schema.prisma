@@ -13,13 +13,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// A single user (Phase 2: single-user, no auth yet).
+/// A registered user.
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  /// Bcrypt password hash (null for OAuth-only users in the future).
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 /// Canonical document — the source of truth for a publication.
@@ -36,6 +38,8 @@ model Document {
   updatedAt DateTime @updatedAt
   /// Soft-delete: documents go to trash before permanent deletion (PRD §25).
   deletedAt DateTime?
+  /// Owner email — used for user isolation (each user sees only their documents).
+  ownerEmail String?
   /// Organization that owns this document (null = personal).
   organizationId String?
   organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -47,6 +51,7 @@ model Document {
   @@index([deletedAt])
   @@index([updatedAt])
   @@index([organizationId])
+  @@index([ownerEmail])
 }
 
 /// Immutable document version snapshot (PRD §13: "Keep document versions
@@ -118,6 +123,8 @@ model Book {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
+  /// Owner email — used for user isolation.
+  ownerEmail  String?
   /// Organization that owns this book (null = personal).
   organizationId String?
   organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -127,6 +134,7 @@ model Book {
   @@index([deletedAt])
   @@index([updatedAt])
   @@index([organizationId])
+  @@index([ownerEmail])
 }
 
 /// BookChapter — a chapter in a book's chapter tree (PRD §15: nested chapters

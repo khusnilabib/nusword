@@ -1,5 +1,5 @@
 /**
- * GET  /api/documents        — list documents (excluding soft-deleted)
+ * GET  /api/documents        — list user's documents (excluding soft-deleted)
  * POST /api/documents        — create a new document
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -10,6 +10,7 @@ import {
   toDocumentDto,
 } from "@/lib/nusword/serialize";
 import { DEFAULT_PAGE_SETTINGS } from "@/types/document";
+import { getAuthEmailOrFallback } from "@/lib/supabase/server";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -17,8 +18,13 @@ const CreateSchema = z.object({
 });
 
 export async function GET() {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const docs = await db.document.findMany({
-    where: { deletedAt: null },
+    where: { deletedAt: null, ownerEmail: userEmail },
     orderBy: { updatedAt: "desc" },
     take: 100,
   });
@@ -26,6 +32,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const userEmail = await getAuthEmailOrFallback();
+  if (!userEmail) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
@@ -41,6 +52,7 @@ export async function POST(req: NextRequest) {
       title: parsed.data.title ?? "Untitled",
       content: stringifyContent(emptyDoc),
       settings: stringifySettings({ ...DEFAULT_PAGE_SETTINGS }),
+      ownerEmail: userEmail,
     },
   });
   return NextResponse.json({ document: toDocumentDto(doc) }, { status: 201 });
