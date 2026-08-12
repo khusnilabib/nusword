@@ -20,7 +20,7 @@ function isDevMode(): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const isAppRoute = request.nextUrl.pathname.startsWith("/app");
   const isAuthPage =
     request.nextUrl.pathname.startsWith("/login") ||
