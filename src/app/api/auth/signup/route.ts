@@ -3,11 +3,11 @@
  *
  * Body: { email, password, name? }
  * Returns: { user: { id, email, name, createdAt } }
- * Sets: httpOnly session cookie with JWT
+ * Sets: httpOnly session cookie with JWT (via NextResponse)
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { hashPassword, createToken, setSessionCookie } from "@/lib/auth/server";
+import { hashPassword, createToken, SESSION_COOKIE_OPTIONS, getSessionCookieName } from "@/lib/auth/server";
 import { z } from "zod";
 
 const SignupSchema = z.object({
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     data: { email, name: name ?? null, passwordHash },
   });
 
-  // Create JWT token and set cookie.
+  // Create JWT token.
   const authUser = {
     id: user.id,
     email: user.email,
@@ -51,7 +51,10 @@ export async function POST(req: NextRequest) {
     createdAt: user.createdAt.toISOString(),
   };
   const token = await createToken(authUser);
-  setSessionCookie(token);
 
-  return NextResponse.json({ user: authUser }, { status: 201 });
+  // Create response + set cookie on the response (NOT via cookies()).
+  const res = NextResponse.json({ user: authUser }, { status: 201 });
+  res.cookies.set(getSessionCookieName(), token, SESSION_COOKIE_OPTIONS);
+
+  return res;
 }

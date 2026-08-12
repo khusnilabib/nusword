@@ -2,9 +2,10 @@
  * POST /api/auth/logout — clear the session cookie.
  */
 import { NextResponse } from "next/server";
-import { clearSessionCookie } from "@/lib/auth/server";
+import { getSessionCookieName } from "@/lib/auth/server";
 
 export async function POST() {
-  clearSessionCookie();
-  return NextResponse.json({ ok: true });
+  const res = NextResponse.json({ ok: true });
+  res.cookies.delete(getSessionCookieName());
+  return res;
 }

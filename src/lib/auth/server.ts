@@ -112,23 +112,16 @@ export async function getAuthEmailOrFallback(): Promise<string> {
   return null as unknown as string; // will cause 401 in production
 }
 
-/** Set the session cookie in the response. */
-export function setSessionCookie(token: string): void {
-  cookies().set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: TOKEN_TTL,
-    path: "/",
-  });
-}
+/** Cookie options for session tokens. */
+export const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  maxAge: TOKEN_TTL,
+  path: "/",
+};
 
-/** Clear the session cookie. */
-export function clearSessionCookie(): void {
-  cookies().delete(COOKIE_NAME);
-}
-
-/** Get the cookie name (for middleware). */
+/** Get the cookie name (for middleware/proxy). */
 export function getSessionCookieName(): string {
   return COOKIE_NAME;
 }
