@@ -6,11 +6,18 @@ generator client {
 }
 
 datasource db {
-  // PostgreSQL — for production (Supabase) and local dev.
-  // Set DATABASE_URL in .env to your Supabase connection string.
-  // See .env.example for setup instructions.
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // PostgreSQL — Neon serverless (recommended for Vercel deployment).
+  //
+  // Neon provides TWO connection strings:
+  //  - Pooled (DATABASE_URL): for the app runtime (connection pooling, port 5432)
+  //  - Direct  (DIRECT_URL):   for Prisma migrations (bypasses pooler)
+  //
+  // Both use SSL (sslmode=require) — Neon requires it.
+  //
+  // Set both in .env (see .env.example for format).
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 /// A registered user.

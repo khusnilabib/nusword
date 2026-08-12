@@ -1,16 +1,15 @@
 import { PrismaClient } from '@prisma/client'
 
 /**
- * Prisma client — configured for production (Supabase PostgreSQL + Vercel).
+ * Prisma client — configured for Neon PostgreSQL serverless + Vercel.
  *
- * Key production settings:
- *  - Connection pooling via pgBouncer (Supabase pooler on port 6543)
- *  - connection_limit=1 for serverless (prevents connection exhaustion)
- *  - Reduced logging in production
+ * Neon uses PgBouncer for connection pooling (mandatory for serverless).
+ * Key settings:
+ *  - connection_limit=1 (prevents connection exhaustion on serverless)
+ *  - sslmode=require (Neon requires SSL)
+ *  - pgbouncer=true (tells Prisma to use prepared statements compatible mode)
  *
- * For local dev:
- *  - Set DATABASE_URL + DIRECT_URL to your local PostgreSQL or Supabase project
- *  - See .env.example for setup instructions
+ * These are set in the DATABASE_URL query string, not here.
  *
  * The global singleton prevents connection exhaustion during hot reloads
  * in development.
