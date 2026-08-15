@@ -35,6 +35,12 @@ export function LandingFooter() {
             style={{ fontFamily: "var(--font-hanken-grotesk), sans-serif" }}
           >
             <Link
+              href="/docs"
+              className="text-body-ui-md text-on-surface-variant transition-colors hover:text-primary"
+            >
+              Documentation
+            </Link>
+            <Link
               href="/app"
               className="text-body-ui-md text-on-surface-variant transition-colors hover:text-primary"
             >

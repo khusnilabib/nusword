@@ -30,6 +30,12 @@ export function LandingNav() {
           style={{ fontFamily: "var(--font-hanken-grotesk), sans-serif" }}
         >
           <Link
+            href="/docs"
+            className="hidden text-body-ui-md text-on-surface-variant transition-colors hover:text-primary sm:inline"
+          >
+            Documentation
+          </Link>
+          <Link
             href="/#features"
             className="hidden text-body-ui-md text-on-surface-variant transition-colors hover:text-primary sm:inline"
           >
