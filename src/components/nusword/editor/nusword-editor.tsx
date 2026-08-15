@@ -153,9 +153,17 @@ export function NuswordEditor({
 
 /* ================================================================
    Formatting Toolbar
+   ================================================================
+   Performance note: Tiptap's `useEditor` re-renders the host component
+   on every transaction (selection change, keystroke, etc.). Without
+   memoization the toolbar would re-render along with it even when its
+   `editor` prop reference is unchanged. We wrap `EditorToolbar` with
+   `React.memo` and a custom comparator that only checks the `editor`
+   prop, so React skips re-rendering the toolbar subtree when the parent
+   re-renders for unrelated reasons (state of the dialog, etc.).
    ================================================================ */
 
-function EditorToolbar({ editor }: { editor: Editor | null }) {
+function EditorToolbarImpl({ editor }: { editor: Editor | null }) {
   const [linkUrl, setLinkUrl] = React.useState("");
   const [showLinkInput, setShowLinkInput] = React.useState(false);
 
@@ -457,3 +465,17 @@ function TbBtn({
 function TbDivider() {
   return <div className="tb-divider" aria-hidden="true" />;
 }
+
+/**
+ * Memoized `EditorToolbar`. React.memo + a comparator that only checks the
+ * `editor` prop. The editor instance is stable across re-renders of the host
+ * `NuswordEditor` component, so the toolbar subtree is skipped whenever the
+ * host re-renders without a new editor instance being created (e.g., when
+ * parent dialog state changes). Internal state (linkUrl / showLinkInput)
+ * still triggers local re-renders as expected.
+ */
+const EditorToolbar = React.memo(
+  EditorToolbarImpl,
+  (prev, next) => prev.editor === next.editor,
+);
+EditorToolbar.displayName = "EditorToolbar";

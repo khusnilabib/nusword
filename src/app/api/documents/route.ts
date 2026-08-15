@@ -1,6 +1,10 @@
 /**
  * GET  /api/documents        — list user's documents (excluding soft-deleted)
  * POST /api/documents        — create a new document
+ *
+ * Performance: the GET list uses `select` so Prisma only returns the columns
+ * the dashboard needs (id / title / content / settings / createdAt / updatedAt)
+ * and skips deletedAt / ownerEmail / organizationId.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
@@ -27,6 +31,14 @@ export async function GET() {
     where: { deletedAt: null, ownerEmail: userEmail },
     orderBy: { updatedAt: "desc" },
     take: 100,
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      settings: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
   return NextResponse.json({ documents: docs.map(toDocumentDto) });
 }

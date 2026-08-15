@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 const hankenGrotesk = Hanken_Grotesk({
   variable: "--font-hanken-grotesk",
@@ -74,6 +76,9 @@ export default function RootLayout({
             <SonnerToaster position="bottom-right" />
           </AuthProvider>
         </QueryProvider>
+        {/* Vercel observability — only active in production deployments. */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

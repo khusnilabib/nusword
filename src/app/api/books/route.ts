@@ -1,6 +1,10 @@
 /**
  * GET  /api/books        — list user's books (excluding soft-deleted)
  * POST /api/books        — create a new book
+ *
+ * Performance: the GET list uses `_count: { select: { chapters: true } }`
+ * instead of `include: { chapters: true }` so Prisma returns just the chapter
+ * count per book rather than fetching every chapter row.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
@@ -24,25 +28,32 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Only fetch the columns + chapter count needed by the dashboard list.
+  // Avoids materialising every BookChapter row just to compute `.length`.
   const books = await db.book.findMany({
     where: { deletedAt: null, ownerEmail: userEmail },
     orderBy: { updatedAt: "desc" },
     take: 100,
-    include: { chapters: true },
+    select: {
+      id: true,
+      title: true,
+      subtitle: true,
+      author: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { chapters: true } },
+    },
   });
   return NextResponse.json({
-    books: books.map((b) => {
-      const dto = toBookDto(b, b.chapters);
-      return {
-        id: dto.id,
-        title: dto.title,
-        subtitle: dto.subtitle,
-        author: dto.author,
-        chapterCount: dto.chapters.length,
-        createdAt: dto.createdAt,
-        updatedAt: dto.updatedAt,
-      };
-    }),
+    books: books.map((b) => ({
+      id: b.id,
+      title: b.title,
+      subtitle: b.subtitle,
+      author: b.author,
+      chapterCount: b._count.chapters,
+      createdAt: b.createdAt.toISOString(),
+      updatedAt: b.updatedAt.toISOString(),
+    })),
   });
 }
 

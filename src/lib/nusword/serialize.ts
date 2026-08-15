@@ -66,8 +66,17 @@ export function countWords(content: JSONContent): number {
   return joined.split(/\s+/).length;
 }
 
+/** Subset of a Prisma `Document` row containing only the fields used by
+ *  `toDocumentDto`. Accepting this narrower type lets callers use Prisma
+ *  `select` to skip unused columns (deletedAt / ownerEmail / organizationId)
+ *  while still passing full rows to the same function. */
+export type DocumentDtoInput = Pick<
+  Document,
+  "id" | "title" | "content" | "settings" | "createdAt" | "updatedAt"
+>;
+
 /** Convert a Prisma Document row to the canonical API shape. */
-export function toDocumentDto(row: Document): NuswordDocument {
+export function toDocumentDto(row: DocumentDtoInput): NuswordDocument {
   const content = parseContent(row.content);
   return {
     id: row.id,

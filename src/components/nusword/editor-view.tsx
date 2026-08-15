@@ -100,7 +100,11 @@ function EditorShell(props: EditorShellProps) {
   const [content, setContent] = React.useState<JSONContent | null>(null);
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
-  const [exportOpen, setExportOpen] = React.useState(false);
+  // Export dialog open state lives in the store so the keyboard shortcut
+  // hook (Ctrl/Cmd+P) can open it from anywhere in the /app route.
+  const exportOpen = useNuswordStore((s) => s.exportDialogOpen);
+  const setExportOpen = useNuswordStore((s) => s.setExportDialogOpen);
+  const saveRequestNonce = useNuswordStore((s) => s.saveRequestNonce);
   const [shareOpen, setShareOpen] = React.useState(false);
 
   // Editor instance — stored in state (not ref) so FindReplace can read it
@@ -134,6 +138,29 @@ function EditorShell(props: EditorShellProps) {
     settings,
     ready: hydrated,
   });
+
+  // Watch the global saveRequestNonce (bumped by Ctrl/Cmd+S in the
+  // keyboard-shortcuts hook). When it changes, trigger an autosave flush
+  // and surface a "Saved" toast. The nonce starts at 0 and only the
+  // initial mount skips it; subsequent bumps are user-initiated saves.
+  const firstSaveNonceRef = React.useRef(true);
+  React.useEffect(() => {
+    if (firstSaveNonceRef.current) {
+      firstSaveNonceRef.current = false;
+      return;
+    }
+    if (!hydrated) {
+      toast.message("Nothing to save yet");
+      return;
+    }
+    let cancelled = false;
+    void flush().then(() => {
+      if (!cancelled) toast.success("Saved");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [saveRequestNonce, hydrated, flush]);
 
   // Derive outline + word count from content (recomputed on each change).
   const outline = React.useMemo(() => extractOutline(content), [content]);

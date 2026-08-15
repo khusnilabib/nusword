@@ -36,6 +36,39 @@ interface NuswordUiState {
   showFindReplace: boolean;
   activePageIndex: number;
 
+  /**
+   * Active section within the dashboard view (Recent / Shared / Templates /
+   * Organizations / Settings). Lifted from local DashboardView state so the
+   * command palette can navigate to a specific dashboard section.
+   */
+  dashboardNav: string;
+  setDashboardNav: (key: string) => void;
+
+  /**
+   * Global command palette (Ctrl/Cmd+K) — PRD §10 power-user palette.
+   * Open state lives in the store so the keyboard-shortcuts hook can
+   * toggle it from anywhere in the /app route.
+   */
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
+
+  /**
+   * Export dialog open state. Lifted out of EditorShell local state so
+   * the keyboard shortcuts hook (Ctrl/Cmd+P) can open it from anywhere.
+   * Only meaningful while a document is open in the editor view.
+   */
+  exportDialogOpen: boolean;
+  setExportDialogOpen: (open: boolean) => void;
+
+  /**
+   * Monotonic nonce bumped by Ctrl/Cmd+S. EditorShell watches this and
+   * triggers an autosave flush + "Saved" toast. Using a nonce (instead of
+   * a direct callback) keeps the shortcut hook decoupled from the editor
+   * component lifecycle.
+   */
+  saveRequestNonce: number;
+  requestSave: () => void;
+
   openDocument: (id: string, title?: string) => void;
   setActiveDocTitle: (title: string) => void;
   setEditorMode: (mode: EditorMode) => void;
@@ -73,6 +106,15 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
   mobileRightOpen: false,
   showFindReplace: false,
   activePageIndex: 0,
+  dashboardNav: "recent",
+  commandPaletteOpen: false,
+  exportDialogOpen: false,
+  saveRequestNonce: 0,
+
+  setDashboardNav: (dashboardNav) => set({ dashboardNav }),
+  setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
+  setExportDialogOpen: (exportDialogOpen) => set({ exportDialogOpen }),
+  requestSave: () => set((s) => ({ saveRequestNonce: s.saveRequestNonce + 1 })),
 
   openDocument: (id, title) =>
     set({
@@ -84,6 +126,7 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
       mobileRightOpen: false,
       showFindReplace: false,
       activePageIndex: 0,
+      exportDialogOpen: false,
     }),
   setActiveDocTitle: (activeDocTitle) => set({ activeDocTitle }),
   setEditorMode: (editorMode) => set({ editorMode }),
@@ -111,6 +154,7 @@ export const useNuswordStore = create<NuswordUiState>((set) => ({
       mobileRightOpen: false,
       showFindReplace: false,
       activePageIndex: 0,
+      exportDialogOpen: false,
     }),
   setEditorSidebarTab: (editorSidebarTab) => set({ editorSidebarTab }),
   setEditorPropertiesTab: (editorPropertiesTab) => set({ editorPropertiesTab }),

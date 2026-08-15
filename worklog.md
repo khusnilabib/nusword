@@ -956,3 +956,171 @@ Stage Summary:
 - All 9 view/CSS files updated per spec; layout is wider (1600px / 1400px / 5xl containers), denser grids (5-column on xl for dashboard + templates, 4-wide stat tiles on sm+), and tighter page margins (24px desktop / 12px mobile via global spacing tokens).
 - Commit `dc8444c` pushed to `origin/main` (after rebase on top of `9a5b62e`).
 - No lint regressions. No behavioral/backend changes — purely layout/styling.
+
+---
+Task ID: FEATURES-1
+Agent: sub-agent (general-purpose)
+Task: Implement Command Palette (Ctrl/Cmd+K) + global keyboard shortcuts for the NUSWORD editor app (PRD §10 — "command palette for power users" + "keyboard-first editing for common commands").
+
+Work Log:
+- Read worklog.md (lines 1–20) for project context. Explored the existing architecture: Next.js 16 App Router, Zustand `nusword-store.ts`, TanStack Query data hooks (`use-documents`, `use-books`), shadcn `command.tsx` (cmdk-based) + `dialog.tsx`, `Icon` (Material Symbols), `editor-view.tsx` (autosave flush + export dialog local state), `dashboard-view.tsx` (local `activeNav` state).
+
+Files created:
+1. `src/components/nusword/command-palette.tsx` — A cmdk-based command palette rendered inside a Radix Dialog. Open state is driven by `commandPaletteOpen` from the Zustand store (so the keyboard hook and any other component can toggle it). Includes the following command groups:
+   - Navigation: Go to Dashboard, Go to Recent, Go to Templates, Go to Organizations.
+   - Create: New Document (calls `useCreateDocument` then `openDocument`), New Book (calls `useCreateBook` then `openBook`).
+   - Recent Documents: top 6 from `useDocuments()` for quick switching.
+   - Recent Books: top 6 from `useBooks()` for quick switching.
+   - Editor: Toggle Preview (Mod+⇧P), Toggle Find & Replace (Mod+F), Export (Mod+P).
+   - Settings: Open Settings.
+   Each command runs through a `run()` helper that executes the action then closes the palette. Search input auto-focuses via cmdk's `Command` primitive; Escape closes (Radix Dialog default). Styling uses NUSWORD design tokens: `bg-surface`, `border-outline-variant`, `text-on-surface`, `rounded-lg`.
+
+2. `src/hooks/use-keyboard-shortcuts.ts` — A hook that registers a single `keydown` listener on `window`. Implements:
+   - Mod+K → open command palette (`setCommandPaletteOpen(true)`).
+   - Mod+S → `requestSave()` (bumps a nonce in the store; EditorShell watches it and triggers `flush()` + `toast.success("Saved")`).
+   - Mod+P → `setExportDialogOpen(true)`.
+   - Mod+Shift+P → `setEditorMode(edit ↔ preview)`.
+   - Mod+F → `toggleFindReplace()`.
+   - Mod+B / I / U → only `preventDefault()` when `target.isContentEditable` (the Tiptap editor); skipped entirely when focus is in INPUT/TEXTAREA/SELECT so native text editing isn't disrupted. Tiptap's own keymap applies the actual formatting.
+   - Guarded by `window.location.pathname.startsWith("/app")` at event time (so client-side route transitions in/out of /app are honored). `Alt` combos are explicitly skipped to avoid OS-level collisions. `editorMode` is read via a ref so the handler identity stays stable. Returns a manual cleanup function in addition to React's `useEffect` auto-cleanup.
+
+Files modified:
+3. `src/stores/nusword-store.ts` — Added 3 new state fields + setters to bridge the keyboard hook and the editor/dashboard views:
+   - `commandPaletteOpen` + `setCommandPaletteOpen` (palette visibility).
+   - `exportDialogOpen` + `setExportDialogOpen` (export dialog visibility, lifted out of EditorShell local state).
+   - `saveRequestNonce` + `requestSave` (monotonic counter for Ctrl+S).
+   - `dashboardNav` + `setDashboardNav` (dashboard section, lifted out of DashboardView local state — lets the palette navigate to a specific dashboard section).
+   Also reset `exportDialogOpen: false` in `openDocument()` and `exitToDashboard()` to avoid stale open state across view transitions.
+
+4. `src/components/nusword/editor-view.tsx` — In `EditorShell`:
+   - Replaced local `exportOpen` `useState` with `exportOpen`/`setExportOpen` from the store (so Ctrl+P works).
+   - Added a `useEffect` watching `saveRequestNonce` that calls `flush()` (from `useAutosave`) and shows `toast.success("Saved")` on completion. Skips the initial mount via a `firstSaveNonceRef` and shows a friendly "Nothing to save yet" message if not hydrated.
+   - The existing `<ExportDialog open={exportOpen} onOpenChange={setExportOpen} … />` wiring now reads/writes the store instead of local state — no other EditorShell changes needed.
+
+5. `src/components/nusword/dashboard-view.tsx` — Replaced local `useState("recent")` for `activeNav` with `dashboardNav`/`setDashboardNav` from the store, so the palette's "Go to Recent/Templates/Organizations/Settings" commands can drive dashboard navigation. (No other edits — the pre-existing `./trash-view` / `./settings-view` imports and `activeNav === "trash"/"settings"` branches were already in the working tree from prior agent work and remain untouched.)
+
+6. `src/app/app/page.tsx` — Imports `CommandPalette` and `useKeyboardShortcuts`. The hook is called once at the top of the component (auto-cleanup on unmount). The palette is rendered as a sibling to the active view so it stays mounted across dashboard/editor/book transitions. Replaced the two `if (view === ...)` early returns with a ternary inside a fragment so the palette is always in the tree.
+
+Verification:
+- `bun run lint` → 0 errors, 1 pre-existing warning (`no-page-custom-font` in `layout.tsx`, unrelated to this task).
+- `bun run tsc --noEmit` → no errors in any of the 4 new/modified files (`command-palette.tsx`, `use-keyboard-shortcuts.ts`, `app/app/page.tsx`, `nusword-store.ts`). The pre-existing TS errors in `editor-view.tsx` (lines 35/1034: `JSONContent` export and `PAPER_SIZES` union) and `dashboard-view.tsx` (line 31: missing `./settings-view` module) were verified to exist before my changes via `git stash` + re-run — they are unrelated to this task.
+
+Stage Summary:
+- Command palette + global keyboard shortcuts are now live on the /app route. Power users can:
+  - Hit Ctrl/Cmd+K anywhere (including from inside text inputs) to summon the palette.
+  - Hit Ctrl/Cmd+S to flush autosave and see a "Saved" toast.
+  - Hit Ctrl/Cmd+P to open the export dialog, Ctrl/Cmd+F to toggle Find & Replace, Ctrl/Cmd+Shift+P to toggle preview.
+  - Hit Ctrl/Cmd+B/I/U inside the editor for bold/italic/underline (Tiptap native; we only suppress the browser default).
+- Design system respected: palette uses `bg-surface` / `border-outline-variant` / `text-on-surface` / `rounded-lg` and Material Symbols icons via `<Icon />`.
+- The implementation is decoupled: the keyboard hook talks to the store (no direct coupling to EditorShell), and EditorShell reacts to store state via `useEffect`. New shortcuts can be added by editing either the hook (for new key combos) or the palette (for new commands) without touching the other.
+- Next actions (out of scope for this task): consider surfacing a small "⌘K" hint button in the dashboard top nav for discoverability; consider adding `Cmd+Shift+S` for "Save as version" (ties into `useCreateVersion`).
+
+---
+Task ID: PERF-1
+Agent: general-purpose (performance optimizations)
+Task: Implement performance optimizations for the NUSWORD app — lazy-load heavy views, memoize the Tiptap toolbar, lazy-load the export preflight, add Vercel Analytics + Speed Insights, add Next.js image optimization config, and optimise Prisma queries on the documents/books list endpoints.
+
+Work Log:
+1. Lazy-load editor/book/dashboard views (`src/app/app/page.tsx`)
+   - Replaced static `import { DashboardView }` etc. with three `React.lazy(() => import(...).then(m => ({ default: m.X })))` blocks.
+   - Wrapped the active view in `<React.Suspense fallback={<ViewLoader />}>` and render only the currently-active view based on the Zustand store. Each view is now its own chunk; the heavy Tiptap deps only ship when the user enters the editor, and the book deps only when entering the book view.
+   - Added a small `ViewLoader` spinner (Material Symbols `progress_activity` with `animate-spin`) shown while a chunk loads.
+
+2. Memoize the editor toolbar (`src/components/nusword/editor/nusword-editor.tsx`)
+   - Renamed the implementation `EditorToolbar` → `EditorToolbarImpl`.
+   - Added `const EditorToolbar = React.memo(EditorToolbarImpl, (prev, next) => prev.editor === next.editor)` so the toolbar subtree is skipped when the host `NuswordEditor` re-renders (Tiptap's `useEditor` re-renders on every transaction) but the `editor` reference is unchanged. Internal `linkUrl`/`showLinkInput` state still triggers local re-renders.
+   - Set `EditorToolbar.displayName = "EditorToolbar"` for React DevTools.
+   - Added a performance note comment block explaining the rationale + trade-off.
+
+3. Lazy-load the export preflight (`src/components/nusword/export-dialog.tsx` + new `src/components/nusword/preflight-summary.tsx`)
+   - Extracted the preflight summary UI into a new `PreflightSummary` component file. This component imports `runPreflight` from `@/lib/nusword/preflight`, computes the report via `React.useMemo`, and accepts an `onReport` callback to lift the report up to the parent (used to gate the Export button on `preflight?.hasErrors`).
+   - In `export-dialog.tsx`: replaced the previous `useEffect` that did `import("@/lib/nusword/preflight").then(...)` with `React.lazy(() => import("./preflight-summary").then(m => ({ default: m.PreflightSummary })))`, wrapped in `<React.Suspense fallback={<spinner>}>`. The preflight code is now in a separate chunk fetched only when the dialog opens.
+   - Added `handlePreflightReport = React.useCallback(setPreflight, [])` for a stable callback so the child's `useEffect` doesn't re-run on every parent render.
+   - Added a `useEffect` that resets `preflight` to `null` when the dialog closes (so the next open starts fresh), and moved the export-history fetch into its own effect.
+
+4. Add Vercel Analytics + Speed Insights
+   - `bun add @vercel/analytics @vercel/speed-insights` → installed `@vercel/analytics@2.0.1` and `@vercel/speed-insights@2.0.0`.
+   - `src/app/layout.tsx`: imported `{ Analytics }` from `@vercel/analytics/react` and `{ SpeedInsights }` from `@vercel/speed-insights/react`, added both to the body (after the `<QueryProvider>` subtree, with a comment noting they're only active in production).
+
+5. Image optimization + bundle-analyzer comment (`next.config.ts`)
+   - Added `images: { formats: ["image/avif", "image/webp"], remotePatterns: [] }` (NUSWORD only serves user-uploaded images from its own origin, so `remotePatterns` stays empty).
+   - Added a comment block describing how to opt-in to `@next/bundle-analyzer` (install as dev dep, run `ANALYZE=true bun run build`, open `analyze/*.html`). The package itself is intentionally NOT installed/added to devDependencies.
+
+6. Optimise Prisma queries
+   - `src/app/api/books/route.ts` GET: replaced `include: { chapters: true }` with `select: { id, title, subtitle, author, createdAt, updatedAt, _count: { select: { chapters: true } } }`. Constructed the response object directly from the row (bypassing `toBookDto`) so Prisma only returns the chapter COUNT rather than fetching every BookChapter row. POST unchanged (still uses `include: { chapters: true }` because `toBookDto` needs the array — but on create chapters is empty so the cost is trivial).
+   - `src/app/api/documents/route.ts` GET: added `select: { id, title, content, settings, createdAt, updatedAt }` so Prisma skips `deletedAt` / `ownerEmail` / `organizationId`.
+   - `src/lib/nusword/serialize.ts`: introduced `DocumentDtoInput = Pick<Document, "id" | "title" | "content" | "settings" | "createdAt" | "updatedAt">` and changed `toDocumentDto(row: Document)` → `toDocumentDto(row: DocumentDtoInput)`. This is backward-compatible (a full `Document` satisfies any `Pick<Document, ...>`) so the 6 other callers of `toDocumentDto` ([id]/route.ts, [id]/versions/route.ts, [id]/export/route.ts, trash/route.ts, templates/[id]/use/route.ts) keep working unchanged.
+
+7. Verification
+   - `bun run lint` → 0 errors, 1 pre-existing warning (`@next/next/no-page-custom-font` for the Material Symbols `<link>` in `layout.tsx`, unrelated to these changes).
+   - `bunx tsc --noEmit` shows the same pre-existing TS errors that existed before (e.g. `JSONContent` is imported but not re-exported by `@/types/document`, TableCell `width` option, etc.). Next.js `typescript.ignoreBuildErrors: true` is set in `next.config.ts`, so the build is unaffected. No NEW TS errors were introduced by these changes (verified by filtering the tsc output for the modified files — the only remaining errors in my files are the same `JSONContent` re-export issue that the original `export-dialog.tsx` already had).
+
+Stage Summary:
+- Editor / book / dashboard views are code-split per view; users hitting the dashboard never download Tiptap or pdfkit until they actually open the editor.
+- Export preflight module ships in a separate chunk fetched only when the export dialog opens.
+- Tiptap toolbar subtree is memoised so it skips re-render on every keystroke/transaction.
+- Vercel Analytics + Speed Insights wired in for production observability.
+- Next.js will serve AVIF/WebP image variants when supported.
+- Books list query no longer materialises all chapter rows (just the count); documents list query no longer fetches the unused owner/org columns.
+- No new lint errors; no new TypeScript errors introduced. No commit/push performed — files left for the parent agent to commit together.
+
+---
+Task ID: FEATURES-2
+Agent: general-purpose (sub-agent)
+Task: Implement three missing features that have UI buttons but don't work yet — (1) Trash/Recovery, (2) Export Book, (3) Settings page.
+
+Work Log:
+- Read existing patterns: `/api/documents/route.ts`, `/api/books/route.ts`, `/api/documents/[id]/route.ts`, `/api/books/[id]/route.ts`, `use-documents.ts`, `use-books.ts`, `auth-provider.tsx`, `lib/auth/server.ts`, `lib/supabase/server.ts`, `lib/nusword/{serialize,book-serialize,pagination,time}.ts`, `export-dialog.tsx`, `editor-view.tsx` (for ExportDialog wiring pattern), `dashboard-view.tsx`, `book-view.tsx`, `types/{document,book}.ts`, `prisma/schema.prisma` (Document, Book, BookChapter, User models).
+
+1. Trash/Recovery Feature
+   - Created `src/app/api/documents/trash/route.ts`:
+     * GET: lists soft-deleted documents for the current user (where `deletedAt != null`, owner-scoped), ordered by `deletedAt desc`, includes a `deletedAt` ISO field per row.
+     * PATCH: body `{ id, action: "restore" | "permanent-delete" }`. Validates ownership (existing row's `ownerEmail` matches current user). Restore sets `deletedAt=null`; permanent-delete calls `db.document.delete` (cascade handles versions, export jobs, shares).
+     * Auth pattern uses `getAuthEmailOrFallback()` returning 401 on no email; Zod-validates the request body.
+   - Created `src/app/api/books/trash/route.ts`: same pattern. Includes `chapters` relation to populate `chapterCount`. Permanent-delete removes the book (cascade deletes BookChapter rows).
+   - Created `src/hooks/use-trash.ts` TanStack Query hooks:
+     * `useTrashedDocuments()`, `useRestoreDocument()`, `usePermanentDeleteDocument()`.
+     * `useTrashedBooks()`, `useRestoreBook()`, `usePermanentDeleteBook()`.
+     * Mutations invalidate the right query keys: restore invalidates both `["trash"]` and the main `["documents"]` / `["books"]` lists so restored items reappear on the dashboard.
+     * Exports `TrashedDocument` (extends `NuswordDocument` + `deletedAt`) and `TrashedBook` (extends `BookSummary` + `deletedAt`) types.
+   - Created `src/components/nusword/trash-view.tsx`:
+     * Two-section list view: Documents and Books. Each row shows icon, title, subtitle (word count / chapter count), deletion timestamp (relative + absolute tooltip), and Restore + Delete Permanently buttons.
+     * Permanent delete prompts `window.confirm` before firing.
+     * Toast feedback on success/error.
+     * Skeleton loaders while fetching, empty state when nothing is trashed.
+     * Uses NUSWORD design tokens (bg-surface, border-outline-variant, text-error, etc.).
+   - Updated `src/components/nusword/dashboard-view.tsx`:
+     * Added `Trash` to `FOOTER_NAV` array before Settings: `{ key: "trash", label: "Trash", icon: "delete" }`.
+     * Added a render branch: when `activeNav === "trash"`, render `<TrashView />` inside the `<main>` padding wrapper.
+     * Imported `TrashView` and `SettingsView`.
+
+2. Export Book Feature
+   - In `src/components/nusword/book-view.tsx`:
+     * Imported `ExportDialog` from `./export-dialog` and `PaginationResult` type from `@/lib/nusword/pagination`.
+     * Added state `const [exportOpen, setExportOpen] = React.useState(false)` in `BookShell`.
+     * Added `handleExportBook` callback: if `book.chapters[0]?.documentId` is missing → `toast.error("Add chapters before exporting")`; otherwise `setExportOpen(true)`.
+     * Wired the "Export Book" button's `onClick={handleExportBook}`.
+     * Rendered `<ExportDialog open={exportOpen} onOpenChange={setExportOpen} documentId={book.chapters[0]?.documentId ?? ""} title={book.title} content={{type:"doc",content:[]}} settings={book.settings.pageSettings} pagination={{pages:[],warnings:[],totalPages:0} as PaginationResult} />` at the bottom of `BookShell`'s returned JSX (after the centre content div, inside the root flex container).
+     * Comment notes that a dedicated multi-chapter book export API is the follow-up.
+
+3. Settings Page
+   - Created `src/app/api/auth/me/route.ts` PATCH handler (alongside the existing GET):
+     * Body `{ name?: string }` (Zod-validated, max 200 chars).
+     * Updates `User.name` in Prisma, issues a fresh JWT with the updated name, and sets a new session cookie so the change is reflected without a re-login.
+     * Dev-mode fallback returns the dev user (no-op for PATCH since dev user isn't in the DB).
+   - Created `src/components/nusword/settings-view.tsx` with four sections wrapped in a shared `SectionCard`:
+     * **Profile**: shows the current user's email (read-only) and an editable name field. Save button calls `PATCH /api/auth/me` and shows a toast. In dev mode, the helper text warns that profile edits aren't persisted.
+     * **Preferences**: theme segmented control (Light/Dark/System) persisted to `localStorage` and applied via the `dark` class on `<html>`; default page size select (all `PAPER_SIZES`); default body font select (Hanken Grotesk, Source Serif 4, JetBrains Mono, Amiri, Arial, Times New Roman). Defaults stored via a small `useLocalStorage` hook.
+     * **Keyboard Shortcuts**: grouped list (Editor / Navigation / Document) of all shortcuts (Ctrl+K, Ctrl+S, Ctrl+P, Ctrl+F, Ctrl+B/I/U/Z, Ctrl+Shift+Z, Ctrl+Enter, Ctrl+Shift+1–6, Esc) rendered as kbd-styled chips.
+     * **About**: NUSWORD version (`v0.2.1`, from `package.json`), schema version, links to GitHub repo and issue tracker.
+   - Updated `src/components/nusword/dashboard-view.tsx`: added a render branch `activeNav === "settings"` → `<SettingsView />` in the `<main>` padding wrapper.
+
+Quality:
+- `bun run lint` → 0 errors, 1 pre-existing warning (`@next/next/no-page-custom-font` for the Material Symbols `<link>` in `layout.tsx`, unrelated to these changes).
+- `bunx tsc --noEmit` filtered for the new files (`trash-view.tsx`, `settings-view.tsx`, `use-trash.ts`, `trash/route.ts`, `auth/me/route.ts`) → 0 errors. The only TS errors remaining in `book-view.tsx` are the pre-existing `JSONContent` re-export issue and an unrelated chapter `parentId` narrowing issue (line numbers shifted because I added new lines, but the underlying errors are unchanged).
+
+Stage Summary:
+- The Trash nav item now opens a list view of soft-deleted documents and books with Restore + Delete Permanently actions; restore invalidates both the trash and main list caches so the dashboard updates immediately.
+- The "Export Book" button opens the existing ExportDialog pointed at the first chapter's document (with a toast guard if no chapters exist). Multi-chapter book export remains a follow-up task.
+- The Settings nav item now opens a four-section settings page (Profile / Preferences / Keyboard Shortcuts / About) with a working profile-name edit backed by a new `PATCH /api/auth/me` endpoint that re-issues the JWT cookie.
+- All new code uses the established auth pattern (`getAuthEmailOrFallback()` for trash routes, `getAuthUser()` for the profile PATCH) and the NUSWORD design system tokens.

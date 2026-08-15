@@ -27,6 +27,8 @@ import { toast } from "sonner";
 import { TemplatesGallery } from "./templates-gallery";
 import { OrganizationsView } from "./organizations-view";
 import { UsageCard } from "./usage-card";
+import { TrashView } from "./trash-view";
+import { SettingsView } from "./settings-view";
 
 type NavItem = {
   key: string;
@@ -42,6 +44,7 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const FOOTER_NAV: NavItem[] = [
+  { key: "trash", label: "Trash", icon: "delete" },
   { key: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -60,7 +63,10 @@ export function DashboardView() {
   const { data: documents = [], isLoading } = useDocuments();
   const createBookMutation = useCreateBook();
   const { data: books = [] } = useBooks();
-  const [activeNav, setActiveNav] = React.useState("recent");
+  // Dashboard nav section is lifted to the store so the command palette
+  // ("Go to Recent / Templates / Organizations / Settings") can navigate.
+  const activeNav = useNuswordStore((s) => s.dashboardNav);
+  const setActiveNav = useNuswordStore((s) => s.setDashboardNav);
   const [search, setSearch] = React.useState("");
 
   // Defer greeting to after hydration.
@@ -118,6 +124,14 @@ export function DashboardView() {
         ) : activeNav === "templates" ? (
           <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
             <TemplatesGallery onUseDocument={(docId, docTitle) => openDocument(docId, docTitle)} />
+          </main>
+        ) : activeNav === "trash" ? (
+          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+            <TrashView />
+          </main>
+        ) : activeNav === "settings" ? (
+          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+            <SettingsView />
           </main>
         ) : (
         <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">

@@ -57,3 +57,4 @@ server.log
 .env
 .env.local
 .env.*.local
+tool-results/

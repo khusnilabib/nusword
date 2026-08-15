@@ -9,6 +9,10 @@
  *
  * PRD §16: "Presets: Screen PDF, Standard Print, High Quality Print, Booklet,
  * Custom. Preflight runs before final print export."
+ *
+ * Performance: the `PreflightSummary` sub-component (which transitively
+ * imports the preflight checker) is lazy-loaded via `React.lazy()` so its
+ * code only ships when the dialog opens.
  */
 import * as React from "react";
 import {
@@ -30,6 +34,12 @@ import {
 import type { PaginationResult } from "@/lib/nusword/pagination";
 import type { PreflightReport } from "@/lib/nusword/preflight";
 import type { JSONContent, PageSettings } from "@/types/document";
+
+// Lazy-load the preflight UI. This pulls the preflight checker code into a
+// separate chunk that's only fetched when the dialog opens.
+const PreflightSummary = React.lazy(() =>
+  import("./preflight-summary").then((m) => ({ default: m.PreflightSummary })),
+);
 
 interface ExportDialogProps {
   open: boolean;
@@ -82,19 +92,26 @@ export function ExportDialog({
   const [history, setHistory] = React.useState<ExportJobHistory[]>([]);
   const [preflight, setPreflight] = React.useState<PreflightReport | null>(null);
 
-  // Run preflight locally whenever the dialog opens (instant feedback).
+  // Stable callback so the lazy PreflightSummary child can lift its report
+  // up without re-running its effect on every parent render.
+  const handlePreflightReport = React.useCallback(
+    (report: PreflightReport) => setPreflight(report),
+    [],
+  );
+
+  // Reset preflight when the dialog closes so the next open starts fresh.
+  React.useEffect(() => {
+    if (!open) setPreflight(null);
+  }, [open]);
+
+  // Load export history when the dialog opens.
   React.useEffect(() => {
     if (!open) return;
-    // Import preflight dynamically to keep the bundle smaller.
-    import("@/lib/nusword/preflight").then(({ runPreflight }) => {
-      setPreflight(runPreflight(content, settings, pagination));
-    });
-    // Load export history.
     fetch(`/api/documents/${documentId}/export`)
       .then((r) => r.json())
       .then((d) => setHistory(d.jobs || []))
       .catch(() => {});
-  }, [open, content, settings, pagination, documentId]);
+  }, [open, documentId]);
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -211,56 +228,28 @@ export function ExportDialog({
             </div>
           )}
 
-          {/* Preflight summary */}
-          {preflight && (
-            <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-label-ui-sm uppercase tracking-wider text-on-surface-variant">
-                  Preflight
-                </span>
-                <span
-                  className={cn(
-                    "text-label-ui-sm rounded px-2 py-0.5",
-                    preflight.hasErrors
-                      ? "bg-error-container text-on-error-container"
-                      : preflight.hasWarnings
-                        ? "bg-surface-container-high text-on-surface-variant"
-                        : "bg-primary-fixed text-on-primary-fixed",
-                  )}
-                >
-                  {preflight.summary}
-                </span>
-              </div>
-              {preflight.issues.length > 0 && (
-                <ul className="space-y-1">
-                  {preflight.issues.slice(0, 5).map((issue, i) => (
-                    <li
-                      key={i}
-                      className="text-body-ui-md flex items-start gap-2 text-on-surface-variant"
-                    >
-                      <Icon
-                        name={
-                          issue.severity === "error"
-                            ? "error"
-                            : issue.severity === "warning"
-                              ? "warning"
-                              : "info"
-                        }
-                        size={14}
-                        className={
-                          issue.severity === "error"
-                            ? "text-error mt-0.5 shrink-0"
-                            : issue.severity === "warning"
-                              ? "text-on-surface-variant mt-0.5 shrink-0"
-                              : "text-outline mt-0.5 shrink-0"
-                        }
-                      />
-                      <span>{issue.message}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {/* Preflight summary — lazy-loaded so preflight code only ships
+              when the dialog is open. Shows a small spinner until ready. */}
+          {open && (
+            <React.Suspense
+              fallback={
+                <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low p-3 text-on-surface-variant">
+                  <Icon
+                    name="progress_activity"
+                    size={16}
+                    className="animate-spin"
+                  />
+                  <span className="text-label-ui-sm">Checking preflight…</span>
+                </div>
+              }
+            >
+              <PreflightSummary
+                content={content}
+                settings={settings}
+                pagination={pagination}
+                onReport={handlePreflightReport}
+              />
+            </React.Suspense>
           )}
 
           {/* Export result */}

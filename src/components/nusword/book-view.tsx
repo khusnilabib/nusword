@@ -43,6 +43,8 @@ import {
 import { ORNAMENT_STYLES, BILINGUAL_LAYOUTS, ARABIC_FONTS } from "@/types/kitab";
 import { calculateBookletImposition } from "@/lib/nusword/imposition";
 import type { JSONContent, PageSettings } from "@/types/document";
+import { ExportDialog } from "./export-dialog";
+import type { PaginationResult } from "@/lib/nusword/pagination";
 
 export function BookView() {
   const bookId = useNuswordStore((s) => s.activeBookId);
@@ -71,6 +73,23 @@ function BookShell({ bookId, onBack }: { bookId: string; onBack: () => void }) {
   const [activeChapterId, setActiveChapterId] = React.useState<string | null>(null);
   const tab = useNuswordStore((s) => s.bookSidebarTab);
   const setTab = useNuswordStore((s) => s.setBookSidebarTab);
+  // Export dialog — opens the existing ExportDialog for the first chapter's
+  // document. Full multi-chapter book export is a future API; for now we export
+  // the first chapter as a representative export target.
+  const [exportOpen, setExportOpen] = React.useState(false);
+
+  const handleExportBook = React.useCallback(() => {
+    if (!book || book.chapters.length === 0) {
+      toast.error("Add chapters before exporting");
+      return;
+    }
+    const firstChapter = book.chapters[0];
+    if (!firstChapter?.documentId) {
+      toast.error("Add chapters before exporting");
+      return;
+    }
+    setExportOpen(true);
+  }, [book]);
 
   if (isLoading) {
     return (
@@ -127,6 +146,7 @@ function BookShell({ bookId, onBack }: { bookId: string; onBack: () => void }) {
           </span>
           <button
             type="button"
+            onClick={handleExportBook}
             className="cursor-pointer rounded bg-primary px-3 py-1.5 text-body-ui-md text-on-primary transition-colors hover:bg-primary-container sm:px-4"
           >
             Export Book
@@ -160,6 +180,20 @@ function BookShell({ bookId, onBack }: { bookId: string; onBack: () => void }) {
           <BookConfigPanel bookId={bookId} book={book} tab={tab} />
         )}
       </div>
+
+      {/* Export dialog — exports the first chapter's document for now.
+          A dedicated book export API (combining all chapters) is a follow-up. */}
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        documentId={book.chapters[0]?.documentId ?? ""}
+        title={book.title}
+        content={{ type: "doc", content: [] }}
+        settings={book.settings.pageSettings}
+        pagination={
+          { pages: [], warnings: [], totalPages: 0 } as PaginationResult
+        }
+      />
     </div>
   );
 }
