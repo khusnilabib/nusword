@@ -116,12 +116,12 @@ export function DashboardView() {
         {activeNav === "organizations" ? (
           <OrganizationsView />
         ) : activeNav === "templates" ? (
-          <main className="flex-1 overflow-y-auto bg-background p-margin-mobile md:p-margin-desktop">
+          <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
             <TemplatesGallery onUseDocument={(docId, docTitle) => openDocument(docId, docTitle)} />
           </main>
         ) : (
-        <main className="flex-1 overflow-y-auto bg-background p-margin-mobile md:p-margin-desktop">
-          <div className="mx-auto max-w-6xl">
+        <main className="flex-1 overflow-y-auto bg-background p-4 lg:p-6">
+          <div className="mx-auto max-w-[1600px]">
             {/* Welcome */}
             <div className="mb-10 flex flex-col gap-1 md:mb-12">
               <h1 className="text-display-doc text-on-surface">
@@ -150,7 +150,7 @@ export function DashboardView() {
             </div>
 
             {/* Document grid */}
-            <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               {/* New Document card */}
               <button
                 type="button"
@@ -232,7 +232,7 @@ export function DashboardView() {
                 </h2>
               </div>
 
-              <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                 {/* New Book card */}
                 <button
                   type="button"

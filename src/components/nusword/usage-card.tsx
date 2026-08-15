@@ -118,7 +118,7 @@ export function UsageCard({ className }: { className?: string }) {
       </header>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {STATS.map((stat) => (
           <StatTile
             key={stat.key}
@@ -215,7 +215,7 @@ function UsageCardSkeleton({ className }: { className?: string }) {
         </div>
         <div className="h-3 w-20 animate-pulse rounded bg-surface-container" />
       </header>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <div
             key={i}

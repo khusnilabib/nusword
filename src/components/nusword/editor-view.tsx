@@ -772,7 +772,7 @@ function EditorCanvas({
   }, [onMeasureNonce]);
 
   return (
-    <main className="relative flex flex-1 flex-col items-center overflow-auto bg-surface-container-low px-4 py-10">
+    <main className="relative flex flex-1 flex-col items-center overflow-auto bg-surface-container-low p-4 lg:p-6">
       {/* Top ruler */}
       <div className="sticky top-0 z-10 flex h-6 w-full shrink-0 items-end overflow-hidden border-b border-outline-variant bg-surface px-gutter">
         <div className="ruler-h h-4 flex-1" />

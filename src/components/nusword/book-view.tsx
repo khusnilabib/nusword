@@ -682,8 +682,8 @@ function BookConfigPanel({
   const types = matter === "front" ? FRONT_MATTER_TYPES : BACK_MATTER_TYPES;
 
   return (
-    <main className="flex-1 overflow-y-auto bg-surface-container-low p-margin-mobile md:p-margin-desktop">
-      <div className="mx-auto max-w-3xl space-y-6">
+    <main className="flex-1 overflow-y-auto bg-surface-container-low p-4 lg:p-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         <div>
           <h1 className="text-headline-ui-lg text-on-surface">
             {matter === "front" ? "Front Matter" : "Back Matter"}
@@ -760,8 +760,8 @@ function BookSettingsEditor({ bookId, book }: { bookId: string; book: any }) {
   };
 
   return (
-    <main className="flex-1 overflow-y-auto bg-surface-container-low p-margin-mobile md:p-margin-desktop">
-      <div className="mx-auto max-w-3xl space-y-8">
+    <main className="flex-1 overflow-y-auto bg-surface-container-low p-4 lg:p-6">
+      <div className="mx-auto max-w-5xl space-y-8">
         <div>
           <h1 className="text-headline-ui-lg text-on-surface">Book Settings</h1>
           <p className="text-body-ui-md text-on-surface-variant">

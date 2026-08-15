@@ -1,0 +1,1319 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * NUSWORD Book Editor View (Phase 5 — Book Engine).
+     5→ *
+     6→ * Shows the book's chapter tree, front/back matter configuration, and book
+     7→ * settings. When a chapter is selected, its document content is loaded into
+     8→ * the Tiptap editor for editing.
+     9→ *
+    10→ * Layout:
+    11→ *  - Top nav: back + book title + export
+    12→ *  - Left sidebar: Chapters / Front Matter / Back Matter / Settings tabs
+    13→ *  - Center: chapter content editor or book settings panel
+    14→ *  - Right sidebar: book properties (binding, mirror margins, running headers)
+    15→ */
+    16→import * as React from "react";
+    17→import { Icon } from "./icon";
+    18→import { NuswordEditor, type NuswordEditorHandle } from "./editor/nusword-editor";
+    19→import { useNuswordStore } from "@/stores/nusword-store";
+    20→import {
+    21→  useBook,
+    22→  useUpdateBook,
+    23→  useCreateChapter,
+    24→  useUpdateChapter,
+    25→  useDeleteChapter,
+    26→  useBookToc,
+    27→} from "@/hooks/use-books";
+    28→import { useDocument, useUpdateDocument } from "@/hooks/use-documents";
+    29→import { useAutosave } from "@/hooks/use-autosave";
+    30→import { cn } from "@/lib/utils";
+    31→import { toast } from "sonner";
+    32→import {
+    33→  BINDING_TYPES,
+    34→  FRONT_MATTER_TYPES,
+    35→  BACK_MATTER_TYPES,
+    36→  type BookSettings,
+    37→  type BookMatterEntry,
+    38→  type BindingType,
+    39→  type FrontMatterType,
+    40→  type BackMatterType,
+    41→  type ChapterNode,
+    42→} from "@/types/book";
+    43→import { ORNAMENT_STYLES, BILINGUAL_LAYOUTS, ARABIC_FONTS } from "@/types/kitab";
+    44→import { calculateBookletImposition } from "@/lib/nusword/imposition";
+    45→import type { JSONContent, PageSettings } from "@/types/document";
+    46→
+    47→export function BookView() {
+    48→  const bookId = useNuswordStore((s) => s.activeBookId);
+    49→  const exitToDashboard = useNuswordStore((s) => s.exitToDashboard);
+    50→
+    51→  if (!bookId) {
+    52→    return (
+    53→      <div className="flex h-screen items-center justify-center">
+    54→        <button
+    55→          onClick={exitToDashboard}
+    56→          className="rounded border border-outline-variant px-4 py-2 text-body-ui-md text-primary hover:bg-surface-container-low"
+    57→        >
+    58→          Back to dashboard
+    59→        </button>
+    60→      </div>
+    61→    );
+    62→  }
+    63→
+    64→  return <BookShell bookId={bookId} onBack={exitToDashboard} />;
+    65→}
+    66→
+    67→/* ================================================================ */
+    68→
+    69→function BookShell({ bookId, onBack }: { bookId: string; onBack: () => void }) {
+    70→  const { data: book, isLoading, isError } = useBook(bookId);
+    71→  const [activeChapterId, setActiveChapterId] = React.useState<string | null>(null);
+    72→  const tab = useNuswordStore((s) => s.bookSidebarTab);
+    73→  const setTab = useNuswordStore((s) => s.setBookSidebarTab);
+    74→
+    75→  if (isLoading) {
+    76→    return (
+    77→      <div className="flex h-screen w-screen flex-col items-center justify-center gap-3 bg-surface-container-low">
+    78→        <Icon name="progress_activity" size={32} className="animate-spin text-primary" />
+    79→        <p className="text-body-ui-md text-on-surface-variant">Loading book…</p>
+    80→      </div>
+    81→    );
+    82→  }
+    83→
+    84→  if (isError || !book) {
+    85→    return (
+    86→      <div className="flex h-screen flex-col items-center justify-center gap-3">
+    87→        <Icon name="error" size={32} className="text-error" />
+    88→        <p className="text-headline-ui-md text-on-surface">Couldn&apos;t load book</p>
+    89→        <button
+    90→          onClick={onBack}
+    91→          className="rounded border border-outline-variant px-4 py-2 text-body-ui-md text-primary hover:bg-surface-container-low"
+    92→        >
+    93→          Back to dashboard
+    94→        </button>
+    95→      </div>
+    96→    );
+    97→  }
+    98→
+    99→  return (
+   100→    <div className="flex h-screen w-screen flex-col overflow-hidden bg-surface-container-low text-on-surface">
+   101→      {/* Top Nav */}
+   102→      <nav className="z-50 flex h-toolbar-height w-full shrink-0 items-center justify-between border-b border-outline-variant bg-surface px-margin-mobile md:px-gutter">
+   103→        <div className="flex min-w-0 items-center gap-2 md:gap-4">
+   104→          <button
+   105→            type="button"
+   106→            onClick={onBack}
+   107→            aria-label="Back to dashboard"
+   108→            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary"
+   109→          >
+   110→            <Icon name="arrow_back" size={20} />
+   111→          </button>
+   112→          <Icon name="menu_book" size={22} className="shrink-0 text-primary" />
+   113→          <div className="flex min-w-0 flex-col">
+   114→            <span className="text-body-ui-md truncate text-base font-semibold text-on-surface md:text-lg">
+   115→              {book.title}
+   116→            </span>
+   117→            {book.author && (
+   118→              <span className="text-label-ui-sm truncate text-on-surface-variant">
+   119→                by {book.author}
+   120→              </span>
+   121→            )}
+   122→          </div>
+   123→        </div>
+   124→        <div className="flex shrink-0 items-center gap-2">
+   125→          <span className="text-label-ui-sm hidden text-on-surface-variant sm:inline">
+   126→            {book.chapters.length} chapters
+   127→          </span>
+   128→          <button
+   129→            type="button"
+   130→            className="cursor-pointer rounded bg-primary px-3 py-1.5 text-body-ui-md text-on-primary transition-colors hover:bg-primary-container sm:px-4"
+   131→          >
+   132→            Export Book
+   133→          </button>
+   134→        </div>
+   135→      </nav>
+   136→
+   137→      <div className="flex flex-1 overflow-hidden">
+   138→        {/* Left Sidebar */}
+   139→        <BookSidebar
+   140→          bookId={bookId}
+   141→          chapters={book.chapters}
+   142→          activeChapterId={activeChapterId}
+   143→          onSelectChapter={setActiveChapterId}
+   144→          tab={tab}
+   145→          onTabChange={setTab}
+   146→        />
+   147→
+   148→        {/* Center Content */}
+   149→        {tab === "chapters" ? (
+   150→          activeChapterId ? (
+   151→            <ChapterEditor
+   152→              bookId={bookId}
+   153→              chapterId={activeChapterId}
+   154→              chapters={book.chapters}
+   155→            />
+   156→          ) : (
+   157→            <ChapterPlaceholder chapters={book.chapters} />
+   158→          )
+   159→        ) : (
+   160→          <BookConfigPanel bookId={bookId} book={book} tab={tab} />
+   161→        )}
+   162→      </div>
+   163→    </div>
+   164→  );
+   165→}
+   166→
+   167→/* ================================================================
+   168→   Left Sidebar — Chapters / Front Matter / Back Matter / Settings
+   169→   ================================================================ */
+   170→
+   171→function BookSidebar({
+   172→  bookId,
+   173→  chapters,
+   174→  activeChapterId,
+   175→  onSelectChapter,
+   176→  tab,
+   177→  onTabChange,
+   178→}: {
+   179→  bookId: string;
+   180→  chapters: ChapterNode[];
+   181→  activeChapterId: string | null;
+   182→  onSelectChapter: (id: string) => void;
+   183→  tab: string;
+   184→  onTabChange: (tab: any) => void;
+   185→}) {
+   186→  return (
+   187→    <aside className="z-40 flex w-sidebar-width shrink-0 flex-col border-r border-outline-variant bg-surface">
+   188→      <div className="border-b border-outline-variant p-4">
+   189→        <h2 className="text-label-ui-sm uppercase tracking-wider text-on-surface-variant">
+   190→          Book Structure
+   191→        </h2>
+   192→      </div>
+   193→
+   194→      <div className="flex border-b border-outline-variant">
+   195→        {([
+   196→          { key: "chapters", icon: "format_list_numbered", label: "Chapters" },
+   197→          { key: "front-matter", icon: "vertical_align_top", label: "Front" },
+   198→          { key: "back-matter", icon: "vertical_align_bottom", label: "Back" },
+   199→          { key: "settings", icon: "settings", label: "Settings" },
+   200→        ] as const).map((t) => (
+   201→          <button
+   202→            key={t.key}
+   203→            type="button"
+   204→            onClick={() => onTabChange(t.key)}
+   205→            className={cn(
+   206→              "flex flex-1 cursor-pointer flex-col items-center gap-0.5 py-2 transition-all",
+   207→              tab === t.key
+   208→                ? "border-b-2 border-primary bg-surface-container-low text-primary"
+   209→                : "border-b-2 border-transparent text-on-surface-variant hover:text-primary",
+   210→            )}
+   211→          >
+   212→            <Icon name={t.icon} size={16} />
+   213→            <span className="text-label-ui-sm hidden sm:inline">{t.label}</span>
+   214→          </button>
+   215→        ))}
+   216→      </div>
+   217→
+   218→      <div className="flex-1 overflow-y-auto p-3">
+   219→        {tab === "chapters" && (
+   220→          <ChapterTree
+   221→            bookId={bookId}
+   222→            chapters={chapters}
+   223→            activeChapterId={activeChapterId}
+   224→            onSelectChapter={onSelectChapter}
+   225→          />
+   226→        )}
+   227→        {tab === "front-matter" && <MatterPanel bookId={bookId} matter="front" />}
+   228→        {tab === "back-matter" && <MatterPanel bookId={bookId} matter="back" />}
+   229→        {tab === "settings" && <BookSettingsSummary bookId={bookId} />}
+   230→      </div>
+   231→    </aside>
+   232→  );
+   233→}
+   234→
+   235→/* ================================================================
+   236→   Chapter Tree
+   237→   ================================================================ */
+   238→
+   239→function ChapterTree({
+   240→  bookId,
+   241→  chapters,
+   242→  activeChapterId,
+   243→  onSelectChapter,
+   244→}: {
+   245→  bookId: string;
+   246→  chapters: ChapterNode[];
+   247→  activeChapterId: string | null;
+   248→  onSelectChapter: (id: string) => void;
+   249→}) {
+   250→  const createChapter = useCreateChapter(bookId);
+   251→
+   252→  const handleAddChapter = () => {
+   253→    createChapter.mutate(
+   254→      { title: `Chapter ${chapters.length + 1}` },
+   255→      {
+   256→        onSuccess: (chapter) => onSelectChapter(chapter.id),
+   257→        onError: () => toast.error("Failed to create chapter"),
+   258→      },
+   259→    );
+   260→  };
+   261→
+   262→  return (
+   263→    <div className="space-y-2">
+   264→      <button
+   265→        type="button"
+   266→        onClick={handleAddChapter}
+   267→        disabled={createChapter.isPending}
+   268→        className="flex w-full cursor-pointer items-center justify-center gap-2 rounded border border-dashed border-outline-variant py-2 text-body-ui-md text-primary transition-colors hover:bg-surface-container-low disabled:opacity-50"
+   269→      >
+   270→        <Icon name={createChapter.isPending ? "progress_activity" : "add"} size={16} />
+   271→        Add Chapter
+   272→      </button>
+   273→
+   274→      {chapters.length === 0 ? (
+   275→        <div className="flex flex-col items-center gap-2 py-8 text-center">
+   276→          <Icon name="menu_book" size={28} className="text-outline-variant" />
+   277→          <p className="text-body-ui-md text-on-surface-variant">No chapters yet</p>
+   278→          <p className="text-label-ui-sm text-outline">
+   279→            Add your first chapter to start building the book.
+   280→          </p>
+   281→        </div>
+   282→      ) : (
+   283→        <div className="space-y-0.5">
+   284→          {chapters.map((chapter, idx) => (
+   285→            <ChapterTreeItem
+   286→              key={chapter.id}
+   287→              bookId={bookId}
+   288→              chapter={chapter}
+   289→              index={idx}
+   290→              active={activeChapterId === chapter.id}
+   291→              onSelect={onSelectChapter}
+   292→            />
+   293→          ))}
+   294→        </div>
+   295→      )}
+   296→    </div>
+   297→  );
+   298→}
+   299→
+   300→function ChapterTreeItem({
+   301→  bookId,
+   302→  chapter,
+   303→  index,
+   304→  active,
+   305→  onSelect,
+   306→}: {
+   307→  bookId: string;
+   308→  chapter: ChapterNode;
+   309→  index: number;
+   310→  active: boolean;
+   311→  onSelect: (id: string) => void;
+   312→}) {
+   313→  const deleteChapter = useDeleteChapter(bookId);
+   314→  const [expanded, setExpanded] = React.useState(true);
+   315→
+   316→  return (
+   317→    <div>
+   318→      <div
+   319→        className={cn(
+   320→          "group flex items-center gap-1 rounded py-1.5 pr-2 transition-colors cursor-pointer",
+   321→          active ? "bg-surface-container-high text-primary" : "text-on-surface-variant hover:bg-surface-container-low",
+   322→        )}
+   323→        onClick={() => onSelect(chapter.id)}
+   324→      >
+   325→        <span className="text-mono-ui w-6 shrink-0 text-center text-outline">
+   326→          {index + 1}
+   327→        </span>
+   328→        <Icon name="description" size={16} className="shrink-0" />
+   329→        <span className="text-body-ui-md flex-1 truncate">{chapter.title}</span>
+   330→        {chapter.children.length > 0 && (
+   331→          <button
+   332→            type="button"
+   333→            onClick={(e) => {
+   334→              e.stopPropagation();
+   335→              setExpanded((v) => !v);
+   336→            }}
+   337→            className="flex size-5 items-center justify-center rounded hover:bg-surface-container"
+   338→          >
+   339→            <Icon name={expanded ? "expand_more" : "chevron_right"} size={14} />
+   340→          </button>
+   341→        )}
+   342→        <button
+   343→          type="button"
+   344→          onClick={(e) => {
+   345→            e.stopPropagation();
+   346→            if (confirm(`Delete chapter "${chapter.title}"?`)) {
+   347→              deleteChapter.mutate(chapter.id, {
+   348→                onSuccess: () => toast.success("Chapter deleted"),
+   349→                onError: () => toast.error("Failed to delete chapter"),
+   350→              });
+   351→            }
+   352→          }}
+   353→          className="flex size-5 items-center justify-center rounded text-on-surface-variant opacity-0 hover:bg-error-container/30 hover:text-error group-hover:opacity-100"
+   354→          aria-label="Delete chapter"
+   355→        >
+   356→          <Icon name="delete" size={14} />
+   357→        </button>
+   358→      </div>
+   359→
+   360→      {expanded && chapter.children.length > 0 && (
+   361→        <div className="ml-6 border-l border-outline-variant pl-2">
+   362→          {chapter.children.map((child, idx) => (
+   363→            <ChapterTreeItem
+   364→              key={child.id}
+   365→              bookId={bookId}
+   366→              chapter={child}
+   367→              index={idx}
+   368→              active={active}
+   369→              onSelect={onSelect}
+   370→            />
+   371→          ))}
+   372→        </div>
+   373→      )}
+   374→    </div>
+   375→  );
+   376→}
+   377→
+   378→/* ================================================================
+   379→   Chapter Editor — loads the chapter's document into Tiptap
+   380→   ================================================================ */
+   381→
+   382→function ChapterEditor({
+   383→  bookId,
+   384→  chapterId,
+   385→  chapters,
+   386→}: {
+   387→  bookId: string;
+   388→  chapterId: string;
+   389→  chapters: ChapterNode[];
+   390→}) {
+   391→  // Find the chapter and its document.
+   392→  const findChapter = (nodes: ChapterNode[]): ChapterNode | null => {
+   393→    for (const n of nodes) {
+   394→      if (n.id === chapterId) return n;
+   395→      const found = findChapter(n.children);
+   396→      if (found) return found;
+   397→    }
+   398→    return null;
+   399→  };
+   400→  const chapter = findChapter(chapters);
+   401→  const documentId = chapter?.documentId;
+   402→
+   403→  const { data: doc, isLoading } = useDocument(documentId);
+   404→  const updateChapter = useUpdateChapter(bookId);
+   405→
+   406→  const [title, setTitle] = React.useState(chapter?.title ?? "");
+   407→  const [content, setContent] = React.useState<JSONContent | null>(null);
+   408→  const [hydrated, setHydrated] = React.useState(false);
+   409→  const editorRef = React.useRef<NuswordEditorHandle | null>(null);
+   410→
+   411→  React.useEffect(() => {
+   412→    if (doc) {
+   413→      setContent(doc.content);
+   414→      setHydrated(true);
+   415→    } else {
+   416→      setHydrated(false);
+   417→    }
+   418→  }, [doc]);
+   419→
+   420→  React.useEffect(() => {
+   421→    setTitle(chapter?.title ?? "");
+   422→  }, [chapter?.title]);
+   423→
+   424→  const updateMutation = useUpdateDocument(documentId ?? "");
+   425→  const { saveState } = useAutosave({
+   426→    documentId,
+   427→    title,
+   428→    content,
+   429→    settings: doc?.settings ?? null,
+   430→    ready: hydrated,
+   431→  });
+   432→
+   433→  if (!chapter) {
+   434→    return (
+   435→      <div className="flex flex-1 items-center justify-center">
+   436→        <p className="text-body-ui-md text-on-surface-variant">Chapter not found</p>
+   437→      </div>
+   438→    );
+   439→  }
+   440→
+   441→  if (isLoading || !doc || !content) {
+   442→    return (
+   443→      <div className="flex flex-1 items-center justify-center">
+   444→        <Icon name="progress_activity" size={24} className="animate-spin text-primary" />
+   445→      </div>
+   446→    );
+   447→  }
+   448→
+   449→  const saveLabel =
+   450→    saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Save failed" : "Saved";
+   451→
+   452→  return (
+   453→    <main className="relative flex flex-1 flex-col items-center overflow-auto bg-surface-container-low px-4 py-10">
+   454→      {/* Chapter header */}
+   455→      <div className="mb-4 flex w-[210mm] max-w-full items-center justify-between">
+   456→        <div className="flex items-center gap-2">
+   457→          <span className="text-label-ui-sm uppercase tracking-wider text-on-surface-variant">
+   458→            Chapter
+   459→          </span>
+   460→          <input
+   461→            type="text"
+   462→            value={title}
+   463→            onChange={(e) => setTitle(e.target.value)}
+   464→            onBlur={() => {
+   465→              if (title !== chapter.title) {
+   466→                updateChapter.mutate({ chapterId, title });
+   467→              }
+   468→            }}
+   469→            className="text-body-ui-md border-b border-transparent bg-transparent font-semibold text-on-surface focus:border-primary focus:outline-none"
+   470→          />
+   471→        </div>
+   472→        <span className={cn("text-label-ui-sm flex items-center gap-1", saveState === "error" ? "text-error" : "text-outline")}>
+   473→          <Icon name={saveState === "saving" ? "progress_activity" : "cloud_done"} size={14} />
+   474→          {saveLabel}
+   475→        </span>
+   476→      </div>
+   477→
+   478→      {/* Paper + editor */}
+   479→      <article
+   480→        className="paper-shadow relative z-0 mx-auto mb-20 flex w-[210mm] max-w-full min-h-[297mm] origin-top flex-col bg-white p-[25.4mm]"
+   481→      >
+   482→        <NuswordEditor
+   483→          key={documentId}
+   484→          initialContent={content}
+   485→          onChange={setContent}
+   486→          editorRef={editorRef}
+   487→          fontSizePt={doc.settings.fontSizePt}
+   488→          lineHeight={doc.settings.lineHeight}
+   489→          dir={doc.settings.languageDirection}
+   490→        />
+   491→      </article>
+   492→    </main>
+   493→  );
+   494→}
+   495→
+   496→function ChapterPlaceholder({ chapters }: { chapters: ChapterNode[] }) {
+   497→  return (
+   498→    <div className="flex flex-1 flex-col items-center justify-center gap-3">
+   499→      <Icon name="menu_book" size={48} className="text-outline-variant" />
+   500→      <p className="text-headline-ui-md text-on-surface">
+   501→        {chapters.length > 0 ? "Select a chapter" : "No chapters yet"}
+   502→      </p>
+   503→      <p className="text-body-ui-md text-on-surface-variant">
+   504→        {chapters.length > 0
+   505→          ? "Choose a chapter from the sidebar to start editing."
+   506→          : "Create your first chapter using the \"Add Chapter\" button."}
+   507→      </p>
+   508→    </div>
+   509→  );
+   510→}
+   511→
+   512→/* ================================================================
+   513→   Front/Back Matter Panel
+   514→   ================================================================ */
+   515→
+   516→function MatterPanel({ bookId, matter }: { bookId: string; matter: "front" | "back" }) {
+   517→  const { data: book } = useBook(bookId);
+   518→  const updateBook = useUpdateBook(bookId);
+   519→  const entries = matter === "front" ? book?.frontMatter ?? [] : book?.backMatter ?? [];
+   520→  const types = matter === "front" ? FRONT_MATTER_TYPES : BACK_MATTER_TYPES;
+   521→
+   522→  if (!book) return null;
+   523→
+   524→  const handleToggle = (entryId: string) => {
+   525→    const updated = entries.map((e) =>
+   526→      e.id === entryId ? { ...e, enabled: !e.enabled } : e,
+   527→    );
+   528→    updateBook.mutate(
+   529→      matter === "front" ? { frontMatter: updated } : { backMatter: updated },
+   530→    );
+   531→  };
+   532→
+   533→  const handleAdd = (type: FrontMatterType | BackMatterType, label: string) => {
+   534→    const newEntry: BookMatterEntry = {
+   535→      id: crypto.randomUUID(),
+   536→      type,
+   537→      title: label,
+   538→      enabled: true,
+   539→    };
+   540→    const updated = [...entries, newEntry];
+   541→    updateBook.mutate(
+   542→      matter === "front" ? { frontMatter: updated } : { backMatter: updated },
+   543→    );
+   544→  };
+   545→
+   546→  return (
+   547→    <div className="space-y-3">
+   548→      <div className="text-label-ui-sm text-on-surface-variant">
+   549→        {matter === "front" ? "Front Matter" : "Back Matter"}
+   550→      </div>
+   551→
+   552→      {/* Existing entries */}
+   553→      {entries.length > 0 && (
+   554→        <div className="space-y-1">
+   555→          {entries.map((entry) => (
+   556→            <div
+   557→              key={entry.id}
+   558→              className={cn(
+   559→                "flex items-center gap-2 rounded border px-2 py-1.5",
+   560→                entry.enabled
+   561→                  ? "border-outline-variant bg-surface-container-lowest"
+   562→                  : "border-outline-variant/50 bg-surface-container-low/50 opacity-60",
+   563→              )}
+   564→            >
+   565→              <Icon
+   566→                name={types.find((t) => t.type === entry.type)?.icon ?? "article"}
+   567→                size={16}
+   568→                className="text-on-surface-variant"
+   569→              />
+   570→              <span className="text-body-ui-md flex-1 truncate text-on-surface">
+   571→                {entry.title}
+   572→              </span>
+   573→              <button
+   574→                type="button"
+   575→                onClick={() => handleToggle(entry.id)}
+   576→                className={cn(
+   577→                  "flex size-6 cursor-pointer items-center justify-center rounded",
+   578→                  entry.enabled ? "text-primary" : "text-on-surface-variant",
+   579→                )}
+   580→              >
+   581→                <Icon name={entry.enabled ? "toggle_on" : "toggle_off"} size={18} />
+   582→              </button>
+   583→            </div>
+   584→          ))}
+   585→        </div>
+   586→      )}
+   587→
+   588→      {/* Add new matter types */}
+   589→      <div className="border-t border-outline-variant pt-2">
+   590→        <div className="text-label-ui-sm mb-1.5 text-outline">Add section:</div>
+   591→        <div className="flex flex-wrap gap-1">
+   592→          {types.map((t) => (
+   593→            <button
+   594→              key={t.type}
+   595→              type="button"
+   596→              onClick={() => handleAdd(t.type, t.label)}
+   597→              className="flex cursor-pointer items-center gap-1 rounded border border-outline-variant px-2 py-1 text-label-ui-sm text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-primary"
+   598→            >
+   599→              <Icon name={t.icon} size={14} />
+   600→              {t.label}
+   601→            </button>
+   602→          ))}
+   603→        </div>
+   604→      </div>
+   605→    </div>
+   606→  );
+   607→}
+   608→
+   609→/* ================================================================
+   610→   Book Settings Summary (sidebar)
+   611→   ================================================================ */
+   612→
+   613→function BookSettingsSummary({ bookId }: { bookId: string }) {
+   614→  const { data: book } = useBook(bookId);
+   615→  if (!book) return null;
+   616→
+   617→  const s = book.settings;
+   618→  const binding = BINDING_TYPES.find((b) => b.type === s.binding);
+   619→
+   620→  return (
+   621→    <div className="space-y-3 text-body-ui-md">
+   622→      <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
+   623→        <div className="text-label-ui-sm text-on-surface-variant">Binding</div>
+   624→        <div className="mt-0.5 font-semibold text-on-surface">{binding?.label ?? s.binding}</div>
+   625→        <div className="text-label-ui-sm text-outline">{binding?.description}</div>
+   626→      </div>
+   627→
+   628→      <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
+   629→        <div className="text-label-ui-sm text-on-surface-variant">Trim Size</div>
+   630→        <div className="mt-0.5 font-semibold text-on-surface">{s.pageSettings.pageSize}</div>
+   631→      </div>
+   632→
+   633→      <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
+   634→        <div className="text-label-ui-sm text-on-surface-variant">Mirror Margins</div>
+   635→        <div className="mt-0.5 font-semibold text-on-surface">
+   636→          {s.mirrorMargins ? "Enabled" : "Disabled"}
+   637→        </div>
+   638→      </div>
+   639→
+   640→      <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
+   641→        <div className="text-label-ui-sm text-on-surface-variant">Running Headers</div>
+   642→        <div className="mt-0.5 font-semibold text-on-surface">
+   643→          {s.runningHeader.enabled ? `Source: ${s.runningHeader.source}` : "Disabled"}
+   644→        </div>
+   645→      </div>
+   646→
+   647→      {s.binding === "saddle" && (
+   648→        <div className="rounded-lg border border-primary/30 bg-primary-fixed/20 p-3">
+   649→          <div className="text-label-ui-sm text-primary">Booklet Imposition</div>
+   650→          <div className="mt-0.5 text-body-ui-md text-on-surface">
+   651→            {s.booklet.sheetsPerSignature} sheets/signature
+   652→          </div>
+   653→          <div className="text-label-ui-sm text-on-surface-variant">
+   654→            = {s.booklet.sheetsPerSignature * 4} pages/signature
+   655→          </div>
+   656→        </div>
+   657→      )}
+   658→    </div>
+   659→  );
+   660→}
+   661→
+   662→/* ================================================================
+   663→   Book Config Panel (center area for front/back/settings tabs)
+   664→   ================================================================ */
+   665→
+   666→function BookConfigPanel({
+   667→  bookId,
+   668→  book,
+   669→  tab,
+   670→}: {
+   671→  bookId: string;
+   672→  book: any;
+   673→  tab: string;
+   674→}) {
+   675→  if (tab === "settings") {
+   676→    return <BookSettingsEditor bookId={bookId} book={book} />;
+   677→  }
+   678→
+   679→  // Front/back matter config in the center area.
+   680→  const matter = tab === "front-matter" ? "front" : "back";
+   681→  const entries = matter === "front" ? book.frontMatter : book.backMatter;
+   682→  const types = matter === "front" ? FRONT_MATTER_TYPES : BACK_MATTER_TYPES;
+   683→
+   684→  return (
+   685→    <main className="flex-1 overflow-y-auto bg-surface-container-low p-margin-mobile md:p-margin-desktop">
+   686→      <div className="mx-auto max-w-3xl space-y-6">
+   687→        <div>
+   688→          <h1 className="text-headline-ui-lg text-on-surface">
+   689→            {matter === "front" ? "Front Matter" : "Back Matter"}
+   690→          </h1>
+   691→          <p className="text-body-ui-md text-on-surface-variant">
+   692→            Configure the {matter === "front" ? "opening" : "closing"} sections of your book.
+   693→            Toggle sections on/off and they will appear in the correct order during export.
+   694→          </p>
+   695→        </div>
+   696→
+   697→        <div className="space-y-3">
+   698→          {entries.length === 0 ? (
+   699→            <div className="rounded-lg border border-dashed border-outline-variant p-8 text-center">
+   700→              <Icon name={matter === "front" ? "vertical_align_top" : "vertical_align_bottom"} size={32} className="text-outline-variant" />
+   701→              <p className="text-body-ui-md mt-2 text-on-surface-variant">
+   702→                No {matter} matter sections yet.
+   703→              </p>
+   704→              <p className="text-label-ui-sm text-outline">
+   705→                Add sections from the sidebar.
+   706→              </p>
+   707→            </div>
+   708→          ) : (
+   709→            entries.map((entry: BookMatterEntry, idx: number) => {
+   710→              const typeInfo = types.find((t) => t.type === entry.type);
+   711→              return (
+   712→                <div
+   713→                  key={entry.id}
+   714→                  className={cn(
+   715→                    "flex items-start gap-4 rounded-lg border p-4",
+   716→                    entry.enabled
+   717→                      ? "border-outline-variant bg-surface"
+   718→                      : "border-outline-variant/40 bg-surface-container-low/50 opacity-60",
+   719→                  )}
+   720→                >
+   721→                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-primary">
+   722→                    <Icon name={typeInfo?.icon ?? "article"} size={20} />
+   723→                  </div>
+   724→                  <div className="flex-1">
+   725→                    <div className="flex items-center gap-2">
+   726→                      <span className="text-mono-ui text-outline">{idx + 1}.</span>
+   727→                      <h3 className="text-headline-ui-md text-on-surface">{entry.title}</h3>
+   728→                    </div>
+   729→                    <p className="text-label-ui-sm text-on-surface-variant">
+   730→                      {typeInfo?.label}
+   731→                    </p>
+   732→                  </div>
+   733→                </div>
+   734→              );
+   735→            })
+   736→          )}
+   737→        </div>
+   738→
+   739→        {/* TOC Preview */}
+   740→        <TocPreview bookId={bookId} />
+   741→      </div>
+   742→    </main>
+   743→  );
+   744→}
+   745→
+   746→/* ================================================================
+   747→   Book Settings Editor (center area)
+   748→   ================================================================ */
+   749→
+   750→function BookSettingsEditor({ bookId, book }: { bookId: string; book: any }) {
+   751→  const updateBook = useUpdateBook(bookId);
+   752→  const settings = book.settings as BookSettings;
+   753→
+   754→  const update = (patch: Partial<BookSettings>) => {
+   755→    updateBook.mutate({ settings: { ...settings, ...patch } });
+   756→  };
+   757→
+   758→  const updatePageSettings = (patch: Partial<PageSettings>) => {
+   759→    update({ pageSettings: { ...settings.pageSettings, ...patch } });
+   760→  };
+   761→
+   762→  return (
+   763→    <main className="flex-1 overflow-y-auto bg-surface-container-low p-margin-mobile md:p-margin-desktop">
+   764→      <div className="mx-auto max-w-3xl space-y-8">
+   765→        <div>
+   766→          <h1 className="text-headline-ui-lg text-on-surface">Book Settings</h1>
+   767→          <p className="text-body-ui-md text-on-surface-variant">
+   768→            Configure binding, page layout, and running headers for your book.
+   769→          </p>
+   770→        </div>
+   771→
+   772→        {/* Book metadata */}
+   773→        <div className="space-y-3">
+   774→          <h2 className="text-headline-ui-md text-on-surface">Metadata</h2>
+   775→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   776→            <div>
+   777→              <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Title</label>
+   778→              <input
+   779→                type="text"
+   780→                value={book.title}
+   781→                onChange={(e) => updateBook.mutate({ title: e.target.value })}
+   782→                className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   783→              />
+   784→            </div>
+   785→            <div>
+   786→              <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Author</label>
+   787→              <input
+   788→                type="text"
+   789→                value={book.author ?? ""}
+   790→                onChange={(e) => updateBook.mutate({ author: e.target.value })}
+   791→                className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   792→              />
+   793→            </div>
+   794→          </div>
+   795→        </div>
+   796→
+   797→        {/* Binding */}
+   798→        <div className="space-y-3">
+   799→          <h2 className="text-headline-ui-md text-on-surface">Binding</h2>
+   800→          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+   801→            {BINDING_TYPES.map((b) => (
+   802→              <button
+   803→                key={b.type}
+   804→                type="button"
+   805→                onClick={() => update({ binding: b.type as BindingType })}
+   806→                className={cn(
+   807→                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+   808→                  settings.binding === b.type
+   809→                    ? "border-primary bg-surface-container-lowest"
+   810→                    : "border-outline-variant hover:bg-surface-container-low",
+   811→                )}
+   812→              >
+   813→                <Icon name={b.icon} size={24} className={settings.binding === b.type ? "text-primary" : "text-on-surface-variant"} />
+   814→                <div>
+   815→                  <div className="text-body-ui-md font-semibold text-on-surface">{b.label}</div>
+   816→                  <div className="text-label-ui-sm text-on-surface-variant">{b.description}</div>
+   817→                </div>
+   818→              </button>
+   819→            ))}
+   820→          </div>
+   821→        </div>
+   822→
+   823→        {/* Page settings */}
+   824→        <div className="space-y-3">
+   825→          <h2 className="text-headline-ui-md text-on-surface">Page Layout</h2>
+   826→          <div className="grid grid-cols-2 gap-3">
+   827→            <div>
+   828→              <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Trim Size</label>
+   829→              <select
+   830→                value={settings.pageSettings.pageSize}
+   831→                onChange={(e) => updatePageSettings({ pageSize: e.target.value as any })}
+   832→                className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   833→              >
+   834→                <option value="A4">A4 (210 × 297 mm)</option>
+   835→                <option value="A5">A5 (148 × 210 mm)</option>
+   836→                <option value="B5">B5 (176 × 250 mm)</option>
+   837→                <option value="Letter">Letter (8.5 × 11 in)</option>
+   838→                <option value="F4">F4 (210 × 330 mm)</option>
+   839→              </select>
+   840→            </div>
+   841→            <div>
+   842→              <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Font Size (pt)</label>
+   843→              <input
+   844→                type="number"
+   845→                value={settings.pageSettings.fontSizePt}
+   846→                onChange={(e) => updatePageSettings({ fontSizePt: parseFloat(e.target.value) || 12 })}
+   847→                className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   848→              />
+   849→            </div>
+   850→          </div>
+   851→
+   852→          <div className="grid grid-cols-4 gap-2">
+   853→            {([
+   854→              { key: "marginTopMm", label: "Top" },
+   855→              { key: "marginBottomMm", label: "Bottom" },
+   856→              { key: "marginLeftMm", label: "Left" },
+   857→              { key: "marginRightMm", label: "Right" },
+   858→            ] as const).map((m) => (
+   859→              <div key={m.key}>
+   860→                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">{m.label} (mm)</label>
+   861→                <input
+   862→                  type="number"
+   863→                  value={settings.pageSettings[m.key]}
+   864→                  onChange={(e) => updatePageSettings({ [m.key]: parseFloat(e.target.value) || 0 } as any)}
+   865→                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   866→                />
+   867→              </div>
+   868→            ))}
+   869→          </div>
+   870→
+   871→          <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+   872→            <span className="text-body-ui-md text-on-surface">Mirror Margins (facing pages)</span>
+   873→            <button
+   874→              type="button"
+   875→              onClick={() => update({ mirrorMargins: !settings.mirrorMargins })}
+   876→              className={cn(settings.mirrorMargins ? "text-primary" : "text-on-surface-variant")}
+   877→            >
+   878→              <Icon name={settings.mirrorMargins ? "toggle_on" : "toggle_off"} size={24} />
+   879→            </button>
+   880→          </label>
+   881→
+   882→          <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+   883→            <span className="text-body-ui-md text-on-surface">Chapters start on odd (right) page</span>
+   884→            <button
+   885→              type="button"
+   886→              onClick={() => update({ chaptersStartOnOddPage: !settings.chaptersStartOnOddPage })}
+   887→              className={cn(settings.chaptersStartOnOddPage ? "text-primary" : "text-on-surface-variant")}
+   888→            >
+   889→              <Icon name={settings.chaptersStartOnOddPage ? "toggle_on" : "toggle_off"} size={24} />
+   890→            </button>
+   891→          </label>
+   892→        </div>
+   893→
+   894→        {/* Running Headers */}
+   895→        <div className="space-y-3">
+   896→          <h2 className="text-headline-ui-md text-on-surface">Running Headers</h2>
+   897→          <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+   898→            <span className="text-body-ui-md text-on-surface">Enable running headers</span>
+   899→            <button
+   900→              type="button"
+   901→              onClick={() => update({ runningHeader: { ...settings.runningHeader, enabled: !settings.runningHeader.enabled } })}
+   902→              className={cn(settings.runningHeader.enabled ? "text-primary" : "text-on-surface-variant")}
+   903→            >
+   904→              <Icon name={settings.runningHeader.enabled ? "toggle_on" : "toggle_off"} size={24} />
+   905→            </button>
+   906→          </label>
+   907→          {settings.runningHeader.enabled && (
+   908→            <div>
+   909→              <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Header source</label>
+   910→              <select
+   911→                value={settings.runningHeader.source}
+   912→                onChange={(e) => update({ runningHeader: { ...settings.runningHeader, source: e.target.value as any } })}
+   913→                className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   914→              >
+   915→                <option value="chapter">Chapter title</option>
+   916→                <option value="book">Book title</option>
+   917→                <option value="custom">Custom text</option>
+   918→              </select>
+   919→            </div>
+   920→          )}
+   921→        </div>
+   922→
+   923→        {/* Booklet Imposition */}
+   924→        {settings.binding === "saddle" && (
+   925→          <div className="space-y-3">
+   926→            <h2 className="text-headline-ui-md text-on-surface">Booklet Imposition</h2>
+   927→            <div className="rounded-lg border border-primary/30 bg-primary-fixed/20 p-4">
+   928→              <div className="grid grid-cols-2 gap-3">
+   929→                <div>
+   930→                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Sheets per signature</label>
+   931→                  <input
+   932→                    type="number"
+   933→                    value={settings.booklet.sheetsPerSignature}
+   934→                    onChange={(e) => update({ booklet: { ...settings.booklet, sheetsPerSignature: parseInt(e.target.value) || 4 } })}
+   935→                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+   936→                  />
+   937→                </div>
+   938→                <div className="flex flex-col justify-end">
+   939→                  <div className="text-label-ui-sm text-on-surface-variant">Pages per signature</div>
+   940→                  <div className="text-headline-ui-md text-primary">
+   941→                    {settings.booklet.sheetsPerSignature * 4}
+   942→                  </div>
+   943→                </div>
+   944→              </div>
+   945→              <p className="text-label-ui-sm mt-3 text-on-surface-variant">
+   946→                Saddle-stitch binding folds sheets in half and staples at the spine.
+   947→                Each sheet produces 4 pages (2 front, 2 back).
+   948→              </p>
+   949→            </div>
+   950→          </div>
+   951→        )}
+   952→
+   953→        {/* Kitab Profile (Phase 6) */}
+   954→        <KitabProfileEditor settings={settings} onUpdate={update} />
+   955→      </div>
+   956→    </main>
+   957→  );
+   958→}
+   959→
+   960→/* ================================================================
+   961→   Kitab Profile Editor (Phase 6)
+   962→   ================================================================ */
+   963→
+   964→function KitabProfileEditor({
+   965→  settings,
+   966→  onUpdate,
+   967→}: {
+   968→  settings: BookSettings;
+   969→  onUpdate: (patch: Partial<BookSettings>) => void;
+   970→}) {
+   971→  const kitab = settings.kitab;
+   972→
+   973→  const updateKitab = (patch: Partial<typeof kitab>) => {
+   974→    onUpdate({ kitab: { ...kitab, ...patch } });
+   975→  };
+   976→
+   977→  const updateFootnotes = (patch: Partial<typeof kitab.footnotes>) => {
+   978→    updateKitab({ footnotes: { ...kitab.footnotes, ...patch } });
+   979→  };
+   980→
+   981→  const updateTraditionalHeader = (patch: Partial<typeof kitab.traditionalHeader>) => {
+   982→    updateKitab({ traditionalHeader: { ...kitab.traditionalHeader, ...patch } });
+   983→  };
+   984→
+   985→  return (
+   986→    <div className="space-y-4">
+   987→      <div className="flex items-center gap-2">
+   988→        <Icon name="auto_stories" size={24} className="text-primary" />
+   989→        <div>
+   990→          <h2 className="text-headline-ui-md text-on-surface">Kitab Profile</h2>
+   991→          <p className="text-body-ui-md text-on-surface-variant">
+   992→            Islamic/Arabic publishing: RTL, Arabic typography, bilingual blocks, footnotes, ornaments.
+   993→          </p>
+   994→        </div>
+   995→      </div>
+   996→
+   997→      {/* Enable Kitab */}
+   998→      <label className="flex cursor-pointer items-center justify-between rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
+   999→        <div>
+  1000→          <div className="text-body-ui-md font-semibold text-on-surface">Enable Kitab Mode</div>
+  1001→          <div className="text-label-ui-sm text-on-surface-variant">
+  1002→            Activates RTL, Arabic fonts, bilingual layout, footnotes, and ornaments.
+  1003→          </div>
+  1004→        </div>
+  1005→        <button
+  1006→          type="button"
+  1007→          onClick={() => {
+  1008→            const enabled = !kitab.enabled;
+  1009→            // Combine kitab + pageSettings changes into a single update to
+  1010→            // avoid race conditions between two separate mutations.
+  1011→            const patch: Partial<BookSettings> = {
+  1012→              kitab: { ...kitab, enabled },
+  1013→            };
+  1014→            if (enabled) {
+  1015→              patch.pageSettings = {
+  1016→                ...settings.pageSettings,
+  1017→                languageDirection: "rtl",
+  1018→                fontFamily: "Amiri",
+  1019→                pageNumberFormat: "arabic-indic",
+  1020→              };
+  1021→            }
+  1022→            onUpdate(patch);
+  1023→          }}
+  1024→          className={cn(kitab.enabled ? "text-primary" : "text-on-surface-variant")}
+  1025→        >
+  1026→          <Icon name={kitab.enabled ? "toggle_on" : "toggle_off"} size={32} />
+  1027→        </button>
+  1028→      </label>
+  1029→
+  1030→      {kitab.enabled && (
+  1031→        <div className="space-y-6 rounded-lg border border-primary/30 bg-primary-fixed/10 p-4">
+  1032→          {/* Arabic Typography */}
+  1033→          <div className="space-y-3">
+  1034→            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+  1035→              <Icon name="text_fields" size={18} />
+  1036→              Arabic Typography
+  1037→            </h3>
+  1038→            <div className="grid grid-cols-2 gap-3">
+  1039→              <div>
+  1040→                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Arabic Font</label>
+  1041→                <select
+  1042→                  value={kitab.arabicFont}
+  1043→                  onChange={(e) => updateKitab({ arabicFont: e.target.value })}
+  1044→                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1045→                >
+  1046→                  {ARABIC_FONTS.map((f) => (
+  1047→                    <option key={f.value} value={f.value}>{f.label}</option>
+  1048→                  ))}
+  1049→                </select>
+  1050→              </div>
+  1051→              <div>
+  1052→                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Arabic Font Size (pt)</label>
+  1053→                <input
+  1054→                  type="number"
+  1055→                  value={kitab.arabicFontSizePt}
+  1056→                  onChange={(e) => updateKitab({ arabicFontSizePt: parseFloat(e.target.value) || 16 })}
+  1057→                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1058→                />
+  1059→              </div>
+  1060→              <div>
+  1061→                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Arabic Line Height</label>
+  1062→                <input
+  1063→                  type="number"
+  1064→                  step="0.1"
+  1065→                  value={kitab.arabicLineHeight}
+  1066→                  onChange={(e) => updateKitab({ arabicLineHeight: parseFloat(e.target.value) || 2.0 })}
+  1067→                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1068→                />
+  1069→              </div>
+  1070→              <div>
+  1071→                <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Translation Font</label>
+  1072→                <select
+  1073→                  value={kitab.translationFont}
+  1074→                  onChange={(e) => updateKitab({ translationFont: e.target.value })}
+  1075→                  className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1076→                >
+  1077→                  <option value="Source Serif 4">Source Serif 4</option>
+  1078→                  <option value="Hanken Grotesk">Hanken Grotesk</option>
+  1079→                  <option value="JetBrains Mono">JetBrains Mono</option>
+  1080→                </select>
+  1081→              </div>
+  1082→            </div>
+  1083→          </div>
+  1084→
+  1085→          {/* Bilingual Layout */}
+  1086→          <div className="space-y-3">
+  1087→            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+  1088→              <Icon name="view_column" size={18} />
+  1089→              Bilingual Layout
+  1090→            </h3>
+  1091→            <div className="grid grid-cols-2 gap-2">
+  1092→              {BILINGUAL_LAYOUTS.map((layout) => (
+  1093→                <button
+  1094→                  key={layout.type}
+  1095→                  type="button"
+  1096→                  onClick={() => updateKitab({ bilingualLayout: layout.type })}
+  1097→                  className={cn(
+  1098→                    "flex cursor-pointer items-start gap-2 rounded border p-2 text-left transition-colors",
+  1099→                    kitab.bilingualLayout === layout.type
+  1100→                      ? "border-primary bg-surface-container-lowest"
+  1101→                      : "border-outline-variant hover:bg-surface-container-low",
+  1102→                  )}
+  1103→                >
+  1104→                  <Icon name={layout.icon} size={18} className={kitab.bilingualLayout === layout.type ? "text-primary" : "text-on-surface-variant"} />
+  1105→                  <div>
+  1106→                    <div className="text-body-ui-md font-medium text-on-surface">{layout.label}</div>
+  1107→                    <div className="text-label-ui-sm text-on-surface-variant">{layout.description}</div>
+  1108→                  </div>
+  1109→                </button>
+  1110→              ))}
+  1111→            </div>
+  1112→          </div>
+  1113→
+  1114→          {/* Ornaments */}
+  1115→          <div className="space-y-3">
+  1116→            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+  1117→              <Icon name="auto_awesome" size={18} />
+  1118→              Ornament Style
+  1119→            </h3>
+  1120→            <div className="grid grid-cols-3 gap-2">
+  1121→              {ORNAMENT_STYLES.map((orn) => (
+  1122→                <button
+  1123→                  key={orn.type}
+  1124→                  type="button"
+  1125→                  onClick={() => updateKitab({ ornamentStyle: orn.type })}
+  1126→                  className={cn(
+  1127→                    "flex cursor-pointer flex-col items-center gap-1 rounded border p-2 transition-colors",
+  1128→                    kitab.ornamentStyle === orn.type
+  1129→                      ? "border-primary bg-surface-container-lowest"
+  1130→                      : "border-outline-variant hover:bg-surface-container-low",
+  1131→                  )}
+  1132→                >
+  1133→                  {orn.preview && (
+  1134→                    <span className="text-lg text-primary" style={{ fontFamily: "var(--font-amiri), serif" }}>
+  1135→                      {orn.preview}
+  1136→                    </span>
+  1137→                  )}
+  1138→                  <span className="text-label-ui-sm text-on-surface-variant">{orn.label}</span>
+  1139→                </button>
+  1140→              ))}
+  1141→            </div>
+  1142→          </div>
+  1143→
+  1144→          {/* Footnotes */}
+  1145→          <div className="space-y-3">
+  1146→            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+  1147→              <Icon name="superscript" size={18} />
+  1148→              Footnotes
+  1149→            </h3>
+  1150→            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+  1151→              <span className="text-body-ui-md text-on-surface">Enable footnotes</span>
+  1152→              <button
+  1153→                type="button"
+  1154→                onClick={() => updateFootnotes({ enabled: !kitab.footnotes.enabled })}
+  1155→                className={cn(kitab.footnotes.enabled ? "text-primary" : "text-on-surface-variant")}
+  1156→              >
+  1157→                <Icon name={kitab.footnotes.enabled ? "toggle_on" : "toggle_off"} size={24} />
+  1158→              </button>
+  1159→            </label>
+  1160→            {kitab.footnotes.enabled && (
+  1161→              <div className="grid grid-cols-2 gap-3">
+  1162→                <div>
+  1163→                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Numbering</label>
+  1164→                  <select
+  1165→                    value={kitab.footnotes.numbering}
+  1166→                    onChange={(e) => updateFootnotes({ numbering: e.target.value as any })}
+  1167→                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1168→                  >
+  1169→                    <option value="arabic-indic">Arabic-Indic (٠١٢٣)</option>
+  1170→                    <option value="decimal">Decimal (1234)</option>
+  1171→                    <option value="per-page">Per page (reset each page)</option>
+  1172→                  </select>
+  1173→                </div>
+  1174→                <div>
+  1175→                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Position</label>
+  1176→                  <select
+  1177→                    value={kitab.footnotes.position}
+  1178→                    onChange={(e) => updateFootnotes({ position: e.target.value as any })}
+  1179→                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1180→                  >
+  1181→                    <option value="bottom">Bottom of page</option>
+  1182→                    <option value="margin">Margin (side notes)</option>
+  1183→                  </select>
+  1184→                </div>
+  1185→              </div>
+  1186→            )}
+  1187→          </div>
+  1188→
+  1189→          {/* Traditional Header */}
+  1190→          <div className="space-y-3">
+  1191→            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+  1192→              <Icon name="border_color" size={18} />
+  1193→              Traditional Kitab Header
+  1194→            </h3>
+  1195→            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+  1196→              <span className="text-body-ui-md text-on-surface">Enable traditional header</span>
+  1197→              <button
+  1198→                type="button"
+  1199→                onClick={() => updateTraditionalHeader({ enabled: !kitab.traditionalHeader.enabled })}
+  1200→                className={cn(kitab.traditionalHeader.enabled ? "text-primary" : "text-on-surface-variant")}
+  1201→              >
+  1202→                <Icon name={kitab.traditionalHeader.enabled ? "toggle_on" : "toggle_off"} size={24} />
+  1203→              </button>
+  1204→            </label>
+  1205→            {kitab.traditionalHeader.enabled && (
+  1206→              <>
+  1207→                <div>
+  1208→                  <label className="text-label-ui-sm mb-1 block text-on-surface-variant">Custom header text (Arabic)</label>
+  1209→                  <input
+  1210→                    type="text"
+  1211→                    value={kitab.traditionalHeader.customText}
+  1212→                    onChange={(e) => updateTraditionalHeader({ customText: e.target.value })}
+  1213→                    placeholder="e.g. سورة البقرة"
+  1214→                    dir="rtl"
+  1215→                    className="h-9 w-full border border-outline-variant bg-surface-container-lowest px-2 text-body-ui-md text-on-surface focus:border-primary focus:outline-none"
+  1216→                    style={{ fontFamily: "var(--font-amiri), serif" }}
+  1217→                  />
+  1218→                </div>
+  1219→                <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+  1220→                  <span className="text-body-ui-md text-on-surface">Decorative border around header</span>
+  1221→                  <button
+  1222→                    type="button"
+  1223→                    onClick={() => updateTraditionalHeader({ border: !kitab.traditionalHeader.border })}
+  1224→                    className={cn(kitab.traditionalHeader.border ? "text-primary" : "text-on-surface-variant")}
+  1225→                  >
+  1226→                    <Icon name={kitab.traditionalHeader.border ? "toggle_on" : "toggle_off"} size={24} />
+  1227→                  </button>
+  1228→                </label>
+  1229→              </>
+  1230→            )}
+  1231→          </div>
+  1232→
+  1233→          {/* Page Numbering & Basmala */}
+  1234→          <div className="space-y-2">
+  1235→            <h3 className="text-headline-ui-md text-on-surface flex items-center gap-2">
+  1236→              <Icon name="format_list_numbered" size={18} />
+  1237→              Page Numbering & Basmala
+  1238→            </h3>
+  1239→            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+  1240→              <span className="text-body-ui-md text-on-surface">Arabic-Indic page numbers (٠١٢٣)</span>
+  1241→              <button
+  1242→                type="button"
+  1243→                onClick={() => {
+  1244→                  const arabicPageNumbers = !kitab.arabicPageNumbers;
+  1245→                  onUpdate({
+  1246→                    kitab: { ...kitab, arabicPageNumbers },
+  1247→                    pageSettings: {
+  1248→                      ...settings.pageSettings,
+  1249→                      pageNumberFormat: arabicPageNumbers ? "arabic-indic" : "decimal",
+  1250→                    },
+  1251→                  });
+  1252→                }}
+  1253→                className={cn(kitab.arabicPageNumbers ? "text-primary" : "text-on-surface-variant")}
+  1254→              >
+  1255→                <Icon name={kitab.arabicPageNumbers ? "toggle_on" : "toggle_off"} size={24} />
+  1256→              </button>
+  1257→            </label>
+  1258→            <label className="flex cursor-pointer items-center justify-between rounded border border-outline-variant px-3 py-2">
+  1259→              <span className="text-body-ui-md text-on-surface">Basmala at start of each chapter</span>
+  1260→              <button
+  1261→                type="button"
+  1262→                onClick={() => updateKitab({ basmalaPerChapter: !kitab.basmalaPerChapter })}
+  1263→                className={cn(kitab.basmalaPerChapter ? "text-primary" : "text-on-surface-variant")}
+  1264→              >
+  1265→                <Icon name={kitab.basmalaPerChapter ? "toggle_on" : "toggle_off"} size={24} />
+  1266→              </button>
+  1267→            </label>
+  1268→          </div>
+  1269→        </div>
+  1270→      )}
+  1271→    </div>
+  1272→  );
+  1273→}
+  1274→
+  1275→/* ================================================================
+  1276→   TOC Preview
+  1277→   ================================================================ */
+  1278→
+  1279→function TocPreview({ bookId }: { bookId: string }) {
+  1280→  const { data: toc, isLoading } = useBookToc(bookId);
+  1281→
+  1282→  return (
+  1283→    <div className="space-y-3">
+  1284→      <h2 className="text-headline-ui-md text-on-surface">Table of Contents Preview</h2>
+  1285→      {isLoading ? (
+  1286→        <p className="text-body-ui-md text-on-surface-variant">Generating TOC…</p>
+  1287→      ) : !toc || toc.entries.length === 0 ? (
+  1288→        <div className="rounded-lg border border-dashed border-outline-variant p-6 text-center">
+  1289→          <Icon name="format_list_numbered" size={24} className="text-outline-variant" />
+  1290→          <p className="text-body-ui-md mt-2 text-on-surface-variant">
+  1291→            No TOC entries yet. Add chapters with headings to build the TOC.
+  1292→          </p>
+  1293→        </div>
+  1294→      ) : (
+  1295→        <div className="rounded-lg border border-outline-variant bg-surface p-4">
+  1296→          <ol className="space-y-1">
+  1297→            {toc.entries.map((entry, i) => (
+  1298→              <li
+  1299→                key={entry.id}
+  1300→                className="flex items-baseline gap-2 text-body-ui-md"
+  1301→                style={{ paddingLeft: `${(entry.level - 1) * 20}px` }}
+  1302→              >
+  1303→                <span className="text-on-surface-variant">
+  1304→                  {entry.isChapter ? <Icon name="menu_book" size={14} className="mr-1 inline" /> : null}
+  1305→                  {entry.title}
+  1306→                </span>
+  1307→                <span className="flex-1 border-b border-dotted border-outline-variant" />
+  1308→                <span className="text-mono-ui text-on-surface-variant">
+  1309→                  {entry.pageNumber ?? "—"}
+  1310→                </span>
+  1311→              </li>
+  1312→            ))}
+  1313→          </ol>
+  1314→        </div>
+  1315→      )}
+  1316→    </div>
+  1317→  );
+  1318→}
+  1319→

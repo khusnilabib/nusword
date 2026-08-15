@@ -7,7 +7,7 @@ import Link from "next/link";
 export function LandingNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-outline-variant bg-surface-container-lowest/80 backdrop-blur-sm">
-      <nav className="mx-auto flex h-16 max-w-5xl items-center justify-between px-margin-mobile md:px-margin-desktop">
+      <nav className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-margin-mobile md:px-margin-desktop">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2">
           <span

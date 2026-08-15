@@ -46,7 +46,7 @@ function HeroSection() {
       {/* Red margin line (like notebook paper) */}
       <div className="absolute left-[10%] top-0 bottom-0 w-px bg-error/20 hidden md:block" />
 
-      <div className="relative mx-auto max-w-4xl px-margin-mobile md:px-margin-desktop py-20 md:py-32">
+      <div className="relative mx-auto max-w-5xl px-margin-mobile md:px-margin-desktop py-20 md:py-32">
         <div className="flex flex-col items-center text-center gap-6">
           {/* Brand mark */}
           <div className="flex items-center gap-2 mb-2">
@@ -167,7 +167,7 @@ function FeaturesSection() {
 
   return (
     <section className="bg-surface py-20 md:py-28">
-      <div className="mx-auto max-w-5xl px-margin-mobile md:px-margin-desktop">
+      <div className="mx-auto max-w-[1400px] px-margin-mobile md:px-margin-desktop">
         <div className="mb-12 text-center">
           <h2
             className="text-on-surface"
@@ -325,7 +325,7 @@ function PhasesSection() {
 function CtaSection() {
   return (
     <section className="bg-surface py-20 md:py-32">
-      <div className="mx-auto max-w-2xl px-margin-mobile md:px-margin-desktop text-center">
+      <div className="mx-auto max-w-3xl px-margin-mobile md:px-margin-desktop text-center">
         <h2
           className="text-on-surface"
           style={{

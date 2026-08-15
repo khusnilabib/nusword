@@ -78,7 +78,7 @@ export function OrganizationsView() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-6xl px-margin-mobile py-8 md:px-margin-desktop md:py-12">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
         {/* Header */}
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

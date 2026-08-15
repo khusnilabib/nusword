@@ -110,7 +110,7 @@ export function TemplatesGallery({ onUseDocument }: TemplatesGalleryProps) {
   };
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
       {/* Heading row */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
@@ -162,7 +162,7 @@ export function TemplatesGallery({ onUseDocument }: TemplatesGalleryProps) {
 
       {/* Grid */}
       {templatesQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {[0, 1, 2, 3].map((i) => (
             <TemplateCardSkeleton key={i} />
           ))}
@@ -173,7 +173,7 @@ export function TemplatesGallery({ onUseDocument }: TemplatesGalleryProps) {
           onCreate={() => setCreateOpen(true)}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-gutter sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {templates.map((tpl) => (
             <TemplateCard
               key={tpl.id}
@@ -397,7 +397,7 @@ function CreateTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-surface p-0">
+      <DialogContent className="max-w-2xl bg-surface p-0">
         <DialogHeader className="border-b border-outline-variant p-4">
           <DialogTitle className="text-headline-ui-md flex items-center gap-2 text-on-surface">
             <Icon name="dashboard_customize" size={20} className="text-primary" />
