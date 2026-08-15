@@ -41,6 +41,8 @@ model Document {
   content   String   @default("")
   /// PageSettings JSON (stringified): pageSize, orientation, margins, bleed, languageDirection.
   settings  String   @default("{}")
+  /// Optional word count goal for the writing progress bar (null = no goal).
+  wordGoal  Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   /// Soft-delete: documents go to trash before permanent deletion (PRD §25).

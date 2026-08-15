@@ -72,7 +72,7 @@ export function countWords(content: JSONContent): number {
  *  while still passing full rows to the same function. */
 export type DocumentDtoInput = Pick<
   Document,
-  "id" | "title" | "content" | "settings" | "createdAt" | "updatedAt"
+  "id" | "title" | "content" | "settings" | "createdAt" | "updatedAt" | "wordGoal"
 >;
 
 /** Convert a Prisma Document row to the canonical API shape. */
@@ -86,6 +86,7 @@ export function toDocumentDto(row: DocumentDtoInput): NuswordDocument {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     wordCount: countWords(content),
+    wordGoal: row.wordGoal ?? null,
   };
 }
 

@@ -1124,3 +1124,75 @@ Stage Summary:
 - The "Export Book" button opens the existing ExportDialog pointed at the first chapter's document (with a toast guard if no chapters exist). Multi-chapter book export remains a follow-up task.
 - The Settings nav item now opens a four-section settings page (Profile / Preferences / Keyboard Shortcuts / About) with a working profile-name edit backed by a new `PATCH /api/auth/me` endpoint that re-issues the JWT cookie.
 - All new code uses the established auth pattern (`getAuthEmailOrFallback()` for trash routes, `getAuthUser()` for the profile PATCH) and the NUSWORD design system tokens.
+
+---
+
+Task ID: UPGRADE-2
+Agent: general-purpose
+Task: Implement 2 feature upgrades — (1) Recent Documents Quick-Access Bar on dashboard, (2) Dark Mode toggle via next-themes.
+
+Files changed:
+- Created `src/components/nusword/theme-toggle.tsx` — client component using `useTheme()` from `next-themes`, renders a `light_mode`/`dark_mode` Material Symbols icon button; gates render on `mounted` state to avoid hydration mismatch.
+- Updated `src/app/layout.tsx` — imported `ThemeProvider` from `next-themes`, wrapped children + toasters with `<ThemeProvider attribute="class" defaultTheme="light" enableSystem>` inside the existing `<AuthProvider>`.
+- Updated `src/components/nusword/dashboard-view.tsx`:
+  - Imported `ThemeToggle` and placed it in the top nav between the Notifications and Account buttons.
+  - Imported `NuswordDocument` type for the recent bar typing.
+  - Added new `RecentDocumentsBar` component: sorts documents by `updatedAt` desc, takes top 5, renders a horizontal scrollable (`flex gap-2 overflow-x-auto`) list of chips; each chip shows a `description` icon + truncated title (`max-w-[12rem] truncate`) + relative time + page size badge; chip styling `rounded-lg border border-outline-variant bg-surface px-3 py-2 cursor-pointer hover:border-primary`; clicking opens the document via `openDocument(doc.id, doc.title)`. Returns `null` when no documents.
+  - Rendered `<RecentDocumentsBar>` in the dashboard main view between the greeting and the usage card, with the "Continue editing" section heading styled as `text-label-ui-sm uppercase tracking-wider text-on-surface-variant`.
+- Updated `src/components/landing/landing-nav.tsx` — imported and rendered `<ThemeToggle />` between the Roadmap link and the Masuk link.
+
+Verification:
+- `bun run lint` → 0 errors, 1 pre-existing warning (`no-page-custom-font` in layout.tsx, unrelated to this task).
+- Theme wiring: `next-themes` v0.4.6 already in package.json; `globals.css` already has `.dark` CSS variables. ThemeProvider sets `attribute="class"` so the existing `.dark` selector is used.
+
+Notes / next actions:
+- The recent docs bar uses the same `relativeTime` util as document cards for consistency.
+- Only rendered in the default main view (Recent / Shared nav), not in Templates/Organizations/Trash/Settings full-page views (those replace `<main>` entirely).
+- Could be enhanced later with keyboard arrows for horizontal scroll and a "See all" affordance, but out of scope here.
+
+---
+
+Task ID: UPGRADE-1
+Agent: general-purpose
+Task: Implement 3 feature upgrades for NUSWORD — (1) Document Duplication, (2) Inline Document Rename from dashboard card, (3) Word Count Goal + Progress Bar in editor.
+
+Files changed:
+- `prisma/schema.prisma` — added `wordGoal Int?` field to the Document model (nullable, default null = no goal). Regenerated Prisma client via `bunx prisma generate`.
+- `src/types/document.ts` — added `wordGoal?: number | null` to the `NuswordDocument` interface (left `PageSettings` untouched per task note — wordGoal is document metadata, not page settings).
+- `src/lib/nusword/serialize.ts` — added `wordGoal` to `DocumentDtoInput` Pick type and pass-through (`wordGoal: row.wordGoal ?? null`) in `toDocumentDto`.
+- `src/app/api/documents/route.ts` — added `wordGoal: true` to the GET list `select` so the dashboard serializer doesn't TS-fail on the narrowed `DocumentDtoInput`.
+- `src/app/api/documents/[id]/route.ts`:
+  - Added `wordGoal: z.number().int().min(1).max(10_000_000).nullish()` to the PATCH Zod schema (null/undefined = clear).
+  - In PATCH handler: read `userEmail` via `getAuthEmailOrFallback()` (401 if none), added ownership check (403 if `existing.ownerEmail !== userEmail`), and merge `wordGoal` into the Prisma `data` payload (`null` clears it explicitly; `undefined` means "field not provided, leave as-is").
+  - Response shape unchanged (`{ document: ... }`) — `wordGoal` now flows through `toDocumentDto`.
+- Created `src/app/api/documents/[id]/duplicate/route.ts` — POST handler. Auth via `getAuthEmailOrFallback()` (401 if none), fetches source document (404 if missing/soft-deleted), ownership check (403), creates a new Document row copying title (truncated to 200 chars with " (copy)" suffix), content, settings, wordGoal, ownerEmail, and organizationId. Returns `{ document: NuswordDocument }` with HTTP 201 (same shape as POST /api/documents).
+- `src/hooks/use-documents.ts`:
+  - Added `wordGoal?: number | null` to `UpdateDocumentInput`.
+  - Updated `useUpdateDocument`'s `onSuccess` cache update to also write the new `title` (previously only `updatedAt`) into the list cache so inline renames reflect immediately. (Single-doc cache intentionally left untouched to avoid autosave re-hydration infinite loops.)
+  - Added `useDuplicateDocument()` mutation — POSTs to `/api/documents/[id]/duplicate`, invalidates `["documents"]` query on success.
+- `src/components/nusword/dashboard-view.tsx`:
+  - Imported `useDuplicateDocument` and `useUpdateDocument` from `@/hooks/use-documents`.
+  - Added `duplicateMutation` instance + `handleDuplicate(id)` in `DashboardView` (success → `toast.success("Document duplicated")`).
+  - Passed `onDuplicate` prop to each `<DocumentCard>`.
+  - DocumentCard dropdown menu (more_vert): added "Duplicate" item between "Open" and "Move to trash", using `content_copy` Material Symbols icon.
+  - Inline rename: added `isEditing`/`editValue` state + `useUpdateDocument(id)` mutation instance per-card. Title `<h3>` is now double-clickable (`onDoubleClick`) — swaps to a controlled `<input>` with auto-focus + select-all on entry. Enter or blur commits via `updateMutation.mutate({ title: next })` (shows `toast.success("Renamed")`); Escape cancels and reverts to the original title. Added a subtle `edit` pencil icon (opacity-0 → opacity-60 on hover) inside the title to hint editability. Input click is `stopPropagation`'d so editing doesn't trigger card-open.
+- `src/components/nusword/editor-view.tsx`:
+  - Added `useUpdateDocument` import.
+  - Added `wordGoal` local state in `EditorShell` (separate from the autosave draft signature so updating it doesn't trigger a content re-save). Hydrated from `doc.wordGoal ?? null` on doc load alongside the existing title/content/settings hydration.
+  - Added `setWordGoalPersisted(goal)` callback — optimistically updates local state, calls `useUpdateDocument(documentId).mutate({ wordGoal: goal })`, and reverts local state on mutation error with `toast.error("Failed to set word goal")`.
+  - Passed `wordGoal` and `onSetGoal={setWordGoalPersisted}` to `<EditorStatusBar>`.
+  - Added `WordGoalProgress({ current, goal })` component — a 24×1.5px track (`bg-surface-container-high`) with a fill bar (`bg-primary` when under goal, `bg-amber-500` when over) at `width: pct%`, plus `"<current> / <goal> words (<pct>%)"` text in `text-mono-ui text-on-surface-variant`. Uses `id-ID` locale formatting to match the rest of the status bar.
+  - Updated `EditorStatusBar`: when `wordGoal > 0`, renders `<WordGoalProgress>` (hidden on mobile via `hidden sm:flex`); otherwise renders the bare `{wordCount} words` span as before. Added a small "Set goal" / "Edit goal" button (`flag` icon when no goal, `target` icon when set) that opens `window.prompt(...)` — blank input clears the goal, positive int sets it, invalid input shows `toast.error`. Button label hidden on mobile (icon-only).
+
+Verification:
+- `bun run lint` → 0 errors, 1 pre-existing warning (`no-page-custom-font` in `src/app/layout.tsx`, unrelated to this task).
+- `bunx tsc --noEmit` → all errors are pre-existing (verified by stashing my changes and re-running — error count identical). My changes introduce no new TS errors. Pre-existing errors are in: `backend/*` (Encore module resolution), `book-view.tsx` (string|null|undefined narrowing), `editor-view.tsx` line 35 & 1071 (`JSONContent` re-export issue + `PaperSizeKey "Custom"` overload), `supabase/server.ts` (`cookies()` Promise in Next 15), etc.
+- Verified the duplicate route returns the same DTO shape as POST /api/documents (`{ document: NuswordDocument }` with HTTP 201).
+- Verified `toDocumentDto` callers across `templates/[id]/use/route.ts`, `documents/trash/route.ts`, `documents/[id]/versions/route.ts`, `documents/[id]/export/route.ts` — all use `findUnique`/`findMany` without `select` (or include `wordGoal` via the updated `select`), so the new `DocumentDtoInput` Pick requirement is satisfied everywhere.
+
+Notes / next actions:
+- The Prisma schema change (`wordGoal Int?`) needs a DB sync — run `bun run db:push` (or `bun run db:migrate`) to apply. Not run automatically here to avoid touching the live DB.
+- Inline rename uses optimistic local cache update via `useUpdateDocument`'s `onSuccess` (writes new title + updatedAt into the `["documents"]` list cache). The single-doc `["document", id]` cache is intentionally NOT updated to avoid the autosave re-hydration infinite-loop (content canonicalization changes the draft signature).
+- Word goal state in the editor is tracked locally (not in autosave draft signature) so editing the goal doesn't trigger a content save round-trip. Goal updates use a separate `useUpdateDocument(documentId)` mutation instance.
+- "Set goal" uses `window.prompt` for simplicity. Could be upgraded to a shadcn Dialog with a numeric input + slider for better UX later.
+- The duplicate API and PATCH route now both check ownership (`existing.ownerEmail !== userEmail` → 403). The original PATCH handler didn't check ownership — this is a security improvement; in dev mode `getAuthEmailOrFallback()` returns `DEV_FALLBACK_EMAIL` so behavior is unchanged for local dev.

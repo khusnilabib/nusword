@@ -23,7 +23,7 @@ import { PageThumbnails } from "./editor/page-thumbnails";
 import { ExportDialog } from "./export-dialog";
 import { ShareDialog } from "./share-dialog";
 import { useNuswordStore } from "@/stores/nusword-store";
-import { useDocument, useDocumentVersions, useCreateVersion, useRestoreVersion } from "@/hooks/use-documents";
+import { useDocument, useDocumentVersions, useCreateVersion, useRestoreVersion, useUpdateDocument } from "@/hooks/use-documents";
 import { useAutosave } from "@/hooks/use-autosave";
 import { usePagination } from "@/hooks/use-pagination";
 import { cn } from "@/lib/utils";
@@ -99,6 +99,9 @@ function EditorShell(props: EditorShellProps) {
   const [title, setTitle] = React.useState("");
   const [content, setContent] = React.useState<JSONContent | null>(null);
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  // Word count goal — separate from the autosave draft signature so updating
+  // it doesn't trigger a content re-save. Hydrated from the server on doc load.
+  const [wordGoal, setWordGoal] = React.useState<number | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
   // Export dialog open state lives in the store so the keyboard shortcut
   // hook (Ctrl/Cmd+P) can open it from anywhere in the /app route.
@@ -119,14 +122,25 @@ function EditorShell(props: EditorShellProps) {
     [],
   );
 
-  // Hydrate draft from server data (once per document load).
+  // Hydrate draft from server data — ONLY on initial load or when document
+  // ID changes. Don't re-hydrate after autosave (which updates the query cache
+  // and would overwrite local edits).
+  const lastDocIdRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (doc) {
+    // Only hydrate when:
+    // 1. We have doc data
+    // 2. The document ID has changed (new document loaded)
+    // 3. We haven't hydrated yet
+    if (doc && doc.id !== lastDocIdRef.current) {
+      lastDocIdRef.current = doc.id;
       setTitle(doc.title);
       setContent(doc.content);
       setSettings(doc.settings);
+      setWordGoal(doc.wordGoal ?? null);
       setHydrated(true);
-    } else {
+    } else if (!doc && lastDocIdRef.current) {
+      // Document was unloaded
+      lastDocIdRef.current = null;
       setHydrated(false);
     }
   }, [doc]);
@@ -193,6 +207,27 @@ function EditorShell(props: EditorShellProps) {
       setSettings((s) => (s ? { ...s, ...patch } : s));
     },
     [],
+  );
+
+  // Word count goal — persisted separately from the autosave draft (it's
+  // document metadata, not content). Optimistically updated locally and
+  // reverted on mutation failure.
+  const goalMutation = useUpdateDocument(documentId);
+  const setWordGoalPersisted = React.useCallback(
+    (goal: number | null) => {
+      const prev = wordGoal;
+      setWordGoal(goal);
+      goalMutation.mutate(
+        { wordGoal: goal },
+        {
+          onError: () => {
+            setWordGoal(prev);
+            toast.error("Failed to set word goal");
+          },
+        },
+      );
+    },
+    [goalMutation, wordGoal],
   );
 
   const editorMode = useNuswordStore((s) => s.editorMode);
@@ -300,6 +335,8 @@ function EditorShell(props: EditorShellProps) {
       </div>
       <EditorStatusBar
         wordCount={wordCount}
+        wordGoal={wordGoal}
+        onSetGoal={setWordGoalPersisted}
         isRtl={isRtl}
         onToggleRtl={() => setRtl(!isRtl)}
         totalPages={pagination.totalPages}
@@ -1435,16 +1472,45 @@ function MonoNumberInput({
 }
 
 /* ================================================================
+   Word Goal Progress
+   ================================================================ */
+
+function WordGoalProgress({ current, goal }: { current: number; goal: number }) {
+  const pct = Math.min(100, Math.round((current / goal) * 100));
+  const isOver = current > goal;
+  return (
+    <div className="flex items-center gap-2" title={`${pct}% of word goal`}>
+      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-container-high">
+        <div
+          className={cn(
+            "h-full transition-all",
+            isOver ? "bg-amber-500" : "bg-primary",
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-mono-ui text-on-surface-variant">
+        {current.toLocaleString("id-ID")} / {goal.toLocaleString("id-ID")} words ({pct}%)
+      </span>
+    </div>
+  );
+}
+
+/* ================================================================
    Status Bar
    ================================================================ */
 
 function EditorStatusBar({
   wordCount,
+  wordGoal,
+  onSetGoal,
   isRtl,
   onToggleRtl,
   totalPages,
 }: {
   wordCount: number;
+  wordGoal: number | null;
+  onSetGoal: (goal: number | null) => void;
   isRtl: boolean;
   onToggleRtl: () => void;
   totalPages: number;
@@ -1453,14 +1519,52 @@ function EditorStatusBar({
   const setZoom = useNuswordStore((s) => s.setZoom);
   const pages = Math.max(1, totalPages);
 
+  const handleSetGoalClick = () => {
+    const input = window.prompt(
+      "Set word count goal (enter a number, or leave blank to clear):",
+      wordGoal?.toString() ?? "",
+    );
+    // Cancelled (Esc / X button) — bail out without clearing.
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (trimmed === "") {
+      onSetGoal(null);
+      return;
+    }
+    const parsed = parseInt(trimmed, 10);
+    if (Number.isNaN(parsed) || parsed < 1) {
+      toast.error("Please enter a valid positive number");
+      return;
+    }
+    onSetGoal(parsed);
+  };
+
   return (
     <footer className="text-mono-ui z-50 flex h-statusbar-height w-full shrink-0 items-center justify-between border-t border-outline-variant bg-surface-container px-margin-mobile text-on-surface-variant md:px-4">
       <div className="flex items-center gap-2 md:gap-4">
         <span>Page 1 of {pages}</span>
         <span className="hidden size-1 rounded-full bg-outline-variant sm:block" />
-        <span className="hidden sm:inline">
-          {wordCount.toLocaleString("id-ID")} words
-        </span>
+        {wordGoal && wordGoal > 0 ? (
+          <span className="hidden items-center gap-2 sm:flex">
+            <WordGoalProgress current={wordCount} goal={wordGoal} />
+          </span>
+        ) : (
+          <span className="hidden sm:inline">
+            {wordCount.toLocaleString("id-ID")} words
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={handleSetGoalClick}
+          aria-label="Set word count goal"
+          title="Set word count goal"
+          className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"
+        >
+          <Icon name={wordGoal ? "target" : "flag"} size={14} />
+          <span className="hidden md:inline">
+            {wordGoal ? "Edit goal" : "Set goal"}
+          </span>
+        </button>
       </div>
       <div className="flex items-center gap-2 md:gap-4">
         <button

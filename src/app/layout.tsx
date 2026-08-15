@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { ThemeProvider } from "next-themes";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
@@ -71,9 +72,11 @@ export default function RootLayout({
       >
         <QueryProvider>
           <AuthProvider>
-            {children}
-            <Toaster />
-            <SonnerToaster position="bottom-right" />
+            <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+              {children}
+              <Toaster />
+              <SonnerToaster position="bottom-right" />
+            </ThemeProvider>
           </AuthProvider>
         </QueryProvider>
         {/* Vercel observability — only active in production deployments. */}

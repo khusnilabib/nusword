@@ -18,17 +18,21 @@ import {
   useDocuments,
   useCreateDocument,
   useDeleteDocument,
+  useDuplicateDocument,
+  useUpdateDocument,
 } from "@/hooks/use-documents";
 import { useBooks, useCreateBook } from "@/hooks/use-books";
 import { useSharedWithMe } from "@/hooks/use-saas";
 import { useAuth } from "@/components/providers/auth-provider";
 import { relativeTime } from "@/lib/nusword/time";
 import { toast } from "sonner";
+import type { NuswordDocument } from "@/types/document";
 import { TemplatesGallery } from "./templates-gallery";
 import { OrganizationsView } from "./organizations-view";
 import { UsageCard } from "./usage-card";
 import { TrashView } from "./trash-view";
 import { SettingsView } from "./settings-view";
+import { ThemeToggle } from "./theme-toggle";
 
 type NavItem = {
   key: string;
@@ -60,6 +64,7 @@ export function DashboardView() {
   const openBook = useNuswordStore((s) => s.openBook);
   const createMutation = useCreateDocument();
   const deleteMutation = useDeleteDocument();
+  const duplicateMutation = useDuplicateDocument();
   const { data: documents = [], isLoading } = useDocuments();
   const createBookMutation = useCreateBook();
   const { data: books = [] } = useBooks();
@@ -106,6 +111,13 @@ export function DashboardView() {
     });
   };
 
+  const handleDuplicate = (id: string) => {
+    duplicateMutation.mutate(id, {
+      onSuccess: () => toast.success("Document duplicated"),
+      onError: () => toast.error("Failed to duplicate document"),
+    });
+  };
+
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return documents;
@@ -145,6 +157,12 @@ export function DashboardView() {
                 Pick up where you left off or start a new publication.
               </p>
             </div>
+
+            {/* Recent documents quick-access bar */}
+            <RecentDocumentsBar
+              documents={documents}
+              onOpen={(id, title) => openDocument(id, title)}
+            />
 
             {/* Usage stats card */}
             {activeNav === "recent" && (
@@ -198,6 +216,7 @@ export function DashboardView() {
                     wordCount={doc.wordCount}
                     pageSize={doc.settings.pageSize}
                     onDelete={() => handleDelete(doc.id, doc.title)}
+                    onDuplicate={() => handleDuplicate(doc.id)}
                     onOpen={() => openDocument(doc.id, doc.title)}
                   />
                 ))}
@@ -351,6 +370,7 @@ function DashboardTopNav({
         >
           <Icon name="notifications" className="text-on-surface-variant" />
         </button>
+        <ThemeToggle />
         <button
           type="button"
           aria-label="Account"
@@ -457,6 +477,7 @@ function DocumentCard({
   wordCount,
   pageSize,
   onOpen,
+  onDuplicate,
   onDelete,
 }: {
   id: string;
@@ -465,9 +486,68 @@ function DocumentCard({
   wordCount: number;
   pageSize: string;
   onOpen: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editValue, setEditValue] = React.useState(title);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const updateMutation = useUpdateDocument(id);
+
+  // Keep editValue in sync when the title prop changes upstream
+  // (e.g. after a successful rename round-trip).
+  React.useEffect(() => {
+    if (!isEditing) setEditValue(title);
+  }, [title, isEditing]);
+
+  // Focus the input + select all on enter-edit for fast overtype.
+  React.useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const startEditing = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditValue(title);
+    setIsEditing(true);
+  };
+
+  const commitEdit = () => {
+    const next = editValue.trim();
+    setIsEditing(false);
+    if (!next || next === title) {
+      setEditValue(title);
+      return;
+    }
+    updateMutation.mutate(
+      { title: next },
+      {
+        onSuccess: () => toast.success("Renamed"),
+        onError: () => {
+          setEditValue(title);
+          toast.error("Failed to rename document");
+        },
+      },
+    );
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditValue(title);
+  };
+
+  const handleEditKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    }
+  };
 
   return (
     <div
@@ -491,9 +571,32 @@ function DocumentCard({
 
       {/* Meta */}
       <div className="flex flex-1 flex-col justify-between p-4">
-        <h3 className="text-headline-ui-md truncate text-on-surface">
-          {title || "Untitled"}
-        </h3>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={handleEditKey}
+            onClick={(e) => e.stopPropagation()}
+            className="text-headline-ui-md w-full rounded border border-primary bg-surface px-1 py-0.5 text-on-surface focus:outline-none"
+            maxLength={200}
+          />
+        ) : (
+          <h3
+            onDoubleClick={startEditing}
+            className="text-headline-ui-md group/title flex cursor-text items-center gap-1 truncate text-on-surface"
+            title="Double-click to rename"
+          >
+            <span className="truncate">{title || "Untitled"}</span>
+            <Icon
+              name="edit"
+              size={14}
+              className="shrink-0 text-on-surface-variant opacity-0 transition-opacity group-hover/title:opacity-60"
+            />
+          </h3>
+        )}
         <div className="mt-2 flex items-center justify-between">
           <span className="text-label-ui-sm flex items-center gap-1 text-on-surface-variant">
             <Icon name="edit" size={14} />
@@ -536,6 +639,16 @@ function DocumentCard({
             type="button"
             onClick={() => {
               setMenuOpen(false);
+              onDuplicate();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-body-ui-md text-on-surface hover:bg-surface-container-low"
+          >
+            <Icon name="content_copy" size={16} /> Duplicate
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
               onDelete();
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-body-ui-md text-error hover:bg-error-container/30"
@@ -569,5 +682,64 @@ function DocumentCardSkeleton() {
         <div className="h-3 w-1/2 animate-pulse rounded bg-surface-container" />
       </div>
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+
+function RecentDocumentsBar({
+  documents,
+  onOpen,
+}: {
+  documents: NuswordDocument[];
+  onOpen: (id: string, title: string) => void;
+}) {
+  // Sort by updatedAt desc and take top 5. Stable sort copies first.
+  const recent = React.useMemo(() => {
+    return [...documents]
+      .sort((a, b) => {
+        const ta = new Date(a.updatedAt).getTime();
+        const tb = new Date(b.updatedAt).getTime();
+        return tb - ta;
+      })
+      .slice(0, 5);
+  }, [documents]);
+
+  if (recent.length === 0) return null;
+
+  return (
+    <section className="mb-8" aria-label="Continue editing">
+      <h2 className="text-label-ui-sm mb-3 uppercase tracking-wider text-on-surface-variant">
+        Continue editing
+      </h2>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
+        {recent.map((doc) => (
+          <button
+            key={doc.id}
+            type="button"
+            onClick={() => onOpen(doc.id, doc.title)}
+            className="flex shrink-0 cursor-pointer items-center gap-3 rounded-lg border border-outline-variant bg-surface px-3 py-2 transition-colors hover:border-primary"
+            title={doc.title || "Untitled"}
+          >
+            <Icon
+              name="description"
+              size={18}
+              className="shrink-0 text-on-surface-variant"
+            />
+            <span className="flex min-w-0 flex-col items-start gap-0.5">
+              <span className="text-body-ui-md max-w-[12rem] truncate text-on-surface">
+                {doc.title || "Untitled"}
+              </span>
+              <span className="text-label-ui-sm text-on-surface-variant">
+                {relativeTime(doc.updatedAt)}
+              </span>
+            </span>
+            <span className="text-mono-ui shrink-0 rounded bg-surface-container-high px-1.5 py-0.5 text-on-surface-variant">
+              {doc.settings.pageSize}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -90,6 +90,8 @@ export interface UpdateDocumentInput {
   title?: string;
   content?: JSONContent;
   settings?: PageSettings;
+  /** Optional word count goal. null clears the goal. */
+  wordGoal?: number | null;
 }
 
 export function useUpdateDocument(id: string) {
@@ -101,10 +103,38 @@ export function useUpdateDocument(id: string) {
         body: JSON.stringify(input),
       }).then((r) => r.document),
     onSuccess: (data) => {
-      // Update the single-doc cache so the UI reflects the server's
-      // canonical state without a refetch.
-      qc.setQueryData(["document", id], data);
-      // Mark the list as stale so the dashboard shows the new updatedAt.
+      // Don't overwrite the single-doc cache with the server response —
+      // that would cause the editor to re-hydrate and create an infinite
+      // loop (server canonicalizes content, which changes the draft signature).
+      // Instead, just update the updatedAt timestamp + title in the list cache.
+      qc.setQueriesData<{ id: string; title: string; updatedAt: string }[]>(
+        { queryKey: ["documents"] },
+        (old) => {
+          if (!old) return old;
+          return old.map((d) =>
+            d.id === id
+              ? { ...d, title: data.title, updatedAt: data.updatedAt }
+              : d,
+          );
+        },
+      );
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Duplicate                                                           */
+/* ------------------------------------------------------------------ */
+
+export function useDuplicateDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchJson<{ document: NuswordDocument }>(
+        `/api/documents/${id}/duplicate`,
+        { method: "POST" },
+      ).then((r) => r.document),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["documents"] });
     },
   });

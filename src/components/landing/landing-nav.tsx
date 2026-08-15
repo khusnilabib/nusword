@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/nusword/theme-toggle";
 
 /**
  * LandingNav — minimalist navigation for the marketing site.
@@ -40,6 +41,7 @@ export function LandingNav() {
           >
             Roadmap
           </Link>
+          <ThemeToggle />
           <Link
             href="/login"
             className="text-body-ui-md text-on-surface-variant transition-colors hover:text-primary"

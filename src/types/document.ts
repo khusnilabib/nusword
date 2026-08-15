@@ -167,6 +167,8 @@ export interface NuswordDocument {
   updatedAt: string;
   /** Word count derived from content (computed server-side for list views). */
   wordCount: number;
+  /** Optional word count goal for the editor progress bar (null = no goal). */
+  wordGoal?: number | null;
 }
 
 /** A version snapshot returned by the versions API. */

@@ -36,6 +36,7 @@ export async function GET() {
       title: true,
       content: true,
       settings: true,
+      wordGoal: true,
       createdAt: true,
       updatedAt: true,
     },
