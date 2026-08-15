@@ -907,3 +907,52 @@ Stage Summary:
 - All 9 phases of NUSWORD are in the repo (landing page, auth, editor, books, kitab, export, SaaS, Encore backend).
 - .env excluded from repo (users need to copy .env.example and fill in their own values).
 - Ready for deployment via GitHub (Vercel, Encore Cloud, or any platform that connects to GitHub).
+
+---
+Task ID: LAYOUT-EXPAND
+Agent: general-purpose sub-agent
+Task: Make the NUSWORD app layout more expansive — wider containers, more columns, less wasted space across all view files.
+
+Work Log:
+- Read `worklog.md` (first 20 lines) for project context (Phase 1 UI shell + design system).
+- Inspected all 9 target files plus `tailwind.config.ts` and `globals.css` to confirm Tailwind v4 `@theme inline` mappings expose `--spacing-*` CSS variables as `p-margin-mobile`, `p-margin-desktop`, etc. utilities.
+- Dashboard (`dashboard-view.tsx`):
+  - Container `max-w-6xl` → `max-w-[1600px]` (wider).
+  - Main padding `p-margin-mobile md:p-margin-desktop` → `p-4 lg:p-6` (tighter).
+  - Templates branch `main` padding also updated to `p-4 lg:p-6`.
+  - Document grid `xl:grid-cols-4` → `xl:grid-cols-5`.
+  - Book grid `xl:grid-cols-4` → `xl:grid-cols-5`.
+- Editor (`editor-view.tsx`):
+  - `EditorCanvas` center `<main>` padding `px-4 py-10` → `p-4 lg:p-6` (tighter).
+  - Confirmed paper `<article>` has no `max-w-full` constraint to remove (no change needed there — task said "if present").
+  - Ruler left untouched, kept full width.
+- Book view (`book-view.tsx`):
+  - `BookConfigPanel`: `max-w-3xl` → `max-w-5xl`, padding `p-margin-mobile md:p-margin-desktop` → `p-4 lg:p-6`.
+  - `BookSettingsEditor`: `max-w-3xl` → `max-w-5xl`, padding `p-margin-mobile md:p-margin-desktop` → `p-4 lg:p-6`.
+- Organizations view (`organizations-view.tsx`):
+  - Wrapper `max-w-6xl` → `max-w-[1400px]`.
+  - Padding `px-margin-mobile py-8 md:px-margin-desktop md:py-12` → `px-4 py-6 lg:px-6 lg:py-8`.
+- Templates gallery (`templates-gallery.tsx`):
+  - Wrapped `<section>` with `mx-auto w-full max-w-[1600px]` (was unconstrained).
+  - Loading skeleton grid `xl:grid-cols-4` → `xl:grid-cols-5`.
+  - Templates grid `xl:grid-cols-4` → `xl:grid-cols-5`.
+  - Create-template `DialogContent` `max-w-lg` → `max-w-2xl`.
+- Usage card (`usage-card.tsx`):
+  - Stat tiles grid `grid-cols-2` → `grid-cols-2 sm:grid-cols-4` (4-wide on small+).
+  - Mirrored the change in the loading skeleton grid for visual consistency.
+- Landing page (`src/app/page.tsx`):
+  - Hero section `max-w-4xl` → `max-w-5xl`.
+  - Features section `max-w-5xl` → `max-w-[1400px]`.
+  - CTA section `max-w-2xl` → `max-w-3xl`.
+- Landing nav (`landing-nav.tsx`) + footer (`landing-footer.tsx`):
+  - `max-w-5xl` → `max-w-[1400px]` in both.
+- Global spacing tokens (`src/app/globals.css`):
+  - `--spacing-margin-mobile: 16px` → `12px`.
+  - `--spacing-margin-desktop: 40px` → `24px`.
+- Lint: `bun run lint` → 0 errors, 1 pre-existing warning (unrelated `no-page-custom-font` in `layout.tsx`).
+- Git: `git add -A` + commit + push. Initial push rejected (remote had new commits); ran `git pull --rebase origin main` (clean rebase, no conflicts) then pushed successfully. Reset remote URL back to clean HTTPS URL.
+
+Stage Summary:
+- All 9 view/CSS files updated per spec; layout is wider (1600px / 1400px / 5xl containers), denser grids (5-column on xl for dashboard + templates, 4-wide stat tiles on sm+), and tighter page margins (24px desktop / 12px mobile via global spacing tokens).
+- Commit `dc8444c` pushed to `origin/main` (after rebase on top of `9a5b62e`).
+- No lint regressions. No behavioral/backend changes — purely layout/styling.
